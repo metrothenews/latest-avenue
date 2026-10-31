@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Button from '../../components/ui/Button.jsx'
 import Notice from '../../components/ui/Notice.jsx'
 import MetaConnect from '../../components/meta/MetaConnect.jsx'
 import FolderPicker from '../../components/meta/FolderPicker.jsx'
-import RunLog from '../../components/meta/RunLog.jsx'
+import RunPanel from '../../components/meta/RunPanel.jsx'
 import { fieldClass } from '../../components/ui/fieldStyles.js'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
-import { clearDriveToken, connectDrive, driveTokenMinutesLeft, getDriveToken } from '../../lib/driveAuth.js'
-import { fileSize, getFile, listVideos } from '../../lib/drive.js'
+import { clearDriveToken, connectDrive, getDriveToken } from '../../lib/driveAuth.js'
+import { fileSize, getFile, listVideos, shortDate } from '../../lib/drive.js'
 import { clearMetaToken, getMetaToken } from '../../lib/metaAuth.js'
-import { adsManagerUrl, getCampaignTemplate, getMe, listAdAccounts, listCampaigns, templateLink, templateProblem } from '../../lib/meta.js'
-import { runCampaignCopy } from '../../lib/campaignCopy.js'
+import { getCampaignTemplate, getMe, listAdAccounts, listCampaigns, templateLink, templateProblem } from '../../lib/meta.js'
+import { runProgress } from '../../lib/campaignCopy.js'
+import { listRuns, newRunId, saveRun } from '../../lib/campaignRuns.js'
 
 const ACCOUNT_KEY = 'meta-account'
-const MIN_DRIVE_MINUTES = 20
 
 function Step({ n, title, done, children }) {
   return (
@@ -35,6 +35,7 @@ const money = (cents, currency) => (cents ? `${(Number(cents) / 100).toLocaleStr
 
 // Owner-only: copy an existing Meta campaign into a new paused one, with one ad per video
 // in a Google Drive folder. Every setting comes from the template; only the video changes.
+// Each copy is a saved run (Firestore) that uploads first and creates the ads later; see RunPanel.
 export default function Campaigns() {
   const { user } = useAuth()
   const [params] = useSearchParams()
@@ -65,15 +66,15 @@ export default function Campaigns() {
   const [videos, setVideos] = useState([])
   const [selected, setSelected] = useState(new Set())
 
-  // Run
+  // Runs
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
-  const [running, setRunning] = useState(false)
-  const [log, setLog] = useState([])
-  const [result, setResult] = useState(null)
+  const [running, setRunning] = useState(false) // saving a new run
+  const [runs, setRuns] = useState(null)
+  const [runsError, setRunsError] = useState('')
+  const [activeRun, setActiveRun] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState('')
-  const cancelled = useRef(false)
 
   const account = accounts.find((a) => a.id === accountId)
   const templateAd = template?.ads.find((a) => a.id === templateAdId)
@@ -93,6 +94,13 @@ export default function Campaigns() {
       setDriveToken(null)
     } else setError(err.message)
   }
+
+  // Saved runs.
+  useEffect(() => {
+    listRuns()
+      .then(setRuns)
+      .catch((err) => setRunsError(`Saved runs aren't available, so new runs can't start: ${err.message} First-time setup: README → Meta campaign builder → Firestore.`))
+  }, [])
 
   // Validate a remembered token and load ad accounts.
   useEffect(() => {
@@ -215,31 +223,37 @@ export default function Campaigns() {
   const ready = metaToken && account && campaign && template?.adsets.length && templateAd && !problem && folder && chosenVideos.length && name.trim()
   const adCount = (template?.adsets.length ?? 0) * chosenVideos.length
 
+  // Saves the choices as a new run and opens it, ready to upload.
   async function handleCreate() {
     setError('')
-    if (driveTokenMinutesLeft() < MIN_DRIVE_MINUTES) {
-      setError(`Your Drive connection expires in under ${MIN_DRIVE_MINUTES} minutes. Reconnect Drive first so the downloads don't stop halfway.`)
-      return
-    }
-    cancelled.current = false
     setRunning(true)
-    setResult(null)
-    setLog([])
-    const upsert = (entry) => setLog((l) => (l.some((e) => e.id === entry.id) ? l.map((e) => (e.id === entry.id ? entry : e)) : [...l, entry]))
+    const run = {
+      id: newRunId(),
+      createdAt: new Date().toISOString(),
+      name: name.trim(),
+      accountId,
+      accountName: account.name,
+      campaign: { id: campaign.id, name: campaign.name },
+      adsets: template.adsets.map((a) => ({ id: a.id, name: a.name })),
+      templateAdJson: JSON.stringify(templateAd),
+      folder: { id: folder.id, name: folder.name },
+      videos: chosenVideos.map((v) => ({ driveId: v.id, name: v.name, size: v.size ?? null, md5: v.md5Checksum ?? null, adIds: {} })),
+    }
     try {
-      const r = await runCampaignCopy(
-        { metaToken, driveToken, accountId, campaign, adsets: template.adsets, templateAd, videos: chosenVideos, name: name.trim() },
-        upsert,
-        () => cancelled.current,
-      )
-      setResult(r)
+      await saveRun(run)
+      setRuns((list) => [run, ...(list ?? [])])
+      setActiveRun(run)
+      setCampaign(null)
+      setFolder(null)
+      setNameEdited(false)
     } catch (err) {
-      if (err.kind === 'auth') setError(`${err.message} Reconnect and run again; anything already created is paused in Ads Manager.`)
-      else setError(err.message)
+      setError(`Couldn't save the run: ${err.message}`)
     } finally {
       setRunning(false)
     }
   }
+
+  const updateRun = (run) => setRuns((list) => list?.map((r) => (r.id === run.id ? JSON.parse(JSON.stringify(run)) : r)))
 
   return (
     <div className="max-w-4xl">
@@ -270,6 +284,48 @@ export default function Campaigns() {
           </div>
         )}
       </Step>
+
+      {runsError && <Notice>{runsError}</Notice>}
+
+      {activeRun ? (
+        <>
+          <button type="button" onClick={() => setActiveRun(null)} className="mt-6 text-sm text-white/50 hover:text-white">← All runs and new campaign</button>
+          <RunPanel
+            key={activeRun.id}
+            run={activeRun}
+            metaToken={metaToken}
+            driveToken={driveToken}
+            onConnectDrive={handleConnectDrive}
+            onChange={updateRun}
+            onDeleted={(id) => { setRuns((list) => list.filter((r) => r.id !== id)); setActiveRun(null) }}
+            onAuthError={metaFailed}
+          />
+        </>
+      ) : (
+      <>
+      {runs?.length > 0 && (
+        <section className="glass mt-6 p-6 md:p-8">
+          <h2 className="text-lg font-semibold">Saved runs</h2>
+          <ul className="mt-4 divide-y divide-white/5 rounded-xl border border-white/10">
+            {runs.map((r) => {
+              const p = runProgress(r)
+              return (
+                <li key={r.id}>
+                  <button type="button" onClick={() => setActiveRun(r)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-white/[0.05]">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{r.name}</span>
+                      <span className="block text-white/40">{r.accountName} · {shortDate(r.updatedAt)}</span>
+                    </span>
+                    <span className="shrink-0 text-white/60">
+                      {p.complete ? 'Done' : p.toUpload ? `${p.uploaded} of ${r.videos.length} uploaded` : `${p.adsMade} of ${p.adsTotal} ads`}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {account && (
         <Step n={2} title="Template campaign" done={Boolean(campaign)}>
@@ -402,7 +458,7 @@ export default function Campaigns() {
       )}
 
       {templateAd && folder && chosenVideos.length > 0 && (
-        <Step n={4} title="Review and create" done={Boolean(result)}>
+        <Step n={4} title="Review and start">
           <label htmlFor="campaign-name" className="mb-1.5 block text-sm text-white/70">New campaign name</label>
           <input id="campaign-name" value={name} onChange={(e) => { setName(e.target.value); setNameEdited(true) }} className={fieldClass()} disabled={running} />
           <ul className="mt-5 space-y-1 text-sm text-white/70">
@@ -411,27 +467,17 @@ export default function Campaigns() {
             <li>{chosenVideos.length} video{chosenVideos.length === 1 ? '' : 's'} uploaded to {account.name}</li>
             <li>{adCount} ad{adCount === 1 ? '' : 's'} named after each video, copying “{templateAd.name}” except the video, paused</li>
           </ul>
+          <p className="mt-5 text-sm text-white/50">
+            Next you upload the videos (videos already in this ad account are reused). Once they're uploaded you can close this page:
+            Meta processes them on its own, and you create the campaign and ads later from Saved runs, on any device.
+          </p>
           {problem && <Notice>{problem}</Notice>}
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button onClick={handleCreate} disabled={!ready || running}>{running ? 'Creating…' : 'Create paused campaign'}</Button>
-            {running && <Button variant="secondary" onClick={() => { cancelled.current = true }}>Stop after current step</Button>}
+            <Button onClick={handleCreate} disabled={!ready || running || Boolean(runsError)}>{running ? 'Saving…' : 'Save run and continue'}</Button>
           </div>
-          {log.length > 0 && <div className="mt-6"><RunLog entries={log} /></div>}
-          {result && (
-            <div className="mt-6 rounded-xl border border-white/20 bg-white/[0.06] p-5">
-              <p className="font-semibold">
-                Created {result.adIds.length} paused ad{result.adIds.length === 1 ? '' : 's'}
-                {result.failures.length > 0 && `, ${result.failures.length} problem${result.failures.length === 1 ? '' : 's'}`}.
-              </p>
-              {result.failures.length > 0 && (
-                <ul className="mt-2 space-y-1 text-sm text-red-300/90">
-                  {result.failures.map((f) => <li key={f.name}>{f.name}: {f.error}</li>)}
-                </ul>
-              )}
-              <Button href={adsManagerUrl(accountId, result.campaignId)} target="_blank" rel="noreferrer" className="mt-4">Review in Ads Manager</Button>
-            </div>
-          )}
         </Step>
+      )}
+      </>
       )}
 
       <Notice>{error}</Notice>

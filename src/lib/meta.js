@@ -115,19 +115,46 @@ export async function uploadVideo(token, accountId, blob, title, onProgress = ()
   return start.video_id
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Every video in the ad account's library.
+export const listAccountVideos = (token, accountId) =>
+  getAll(token, `${accountId}/advideos`, { fields: 'id,title,status' }, 5000)
 
-// Waits until Meta has processed the video, then returns its preferred thumbnail URL.
-export async function waitForVideo(token, videoId, { timeoutMs = 15 * 60 * 1000, isCancelled = () => false } = {}) {
-  const deadline = Date.now() + timeoutMs
-  while (true) {
-    const { status } = await graphGet(token, videoId, { fields: 'status' })
-    if (status?.video_status === 'ready') break
-    if (status?.video_status === 'error') throw new MetaError('Meta could not process this video.')
-    if (Date.now() > deadline) throw new MetaError('Timed out waiting for Meta to process the video.')
-    if (isCancelled()) throw new MetaError('Stopped.')
-    await sleep(5000)
+// Meta's processing state as 'ready', 'processing' or 'error'.
+const processing = (status) => {
+  const s = status?.video_status
+  return s === 'ready' ? 'ready' : s === 'error' || s === 'expired' ? 'error' : 'processing'
+}
+export const isUsableVideo = (video) => processing(video.status) !== 'error'
+
+// One video's state, or 'gone' if it was deleted from the library.
+export async function videoStatus(token, videoId) {
+  try {
+    return processing((await graphGet(token, videoId, { fields: 'status' })).status)
+  } catch (err) {
+    if (err.kind === 'auth') throw err
+    return 'gone'
   }
+}
+
+// { [videoId]: state } for many videos, 50 per request. A deleted video fails the whole request,
+// so that batch falls back to one request per video.
+export async function videoStatuses(token, ids) {
+  const out = {}
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50)
+    try {
+      const body = await graphGet(token, '', { ids: batch.join(','), fields: 'status' })
+      for (const id of batch) out[id] = body[id] ? processing(body[id].status) : 'gone'
+    } catch (err) {
+      if (err.kind === 'auth') throw err
+      for (const id of batch) out[id] = await videoStatus(token, id)
+    }
+  }
+  return out
+}
+
+// The preferred thumbnail of a processed video.
+export async function videoThumbnail(token, videoId) {
   const { data = [] } = await graphGet(token, `${videoId}/thumbnails`, { fields: 'uri,is_preferred' })
   const thumb = data.find((t) => t.is_preferred) ?? data[0]
   if (!thumb) throw new MetaError('Meta returned no thumbnail for this video.')

@@ -115,7 +115,8 @@ src/
     meta/
       MetaConnect.jsx       "Continue with Facebook" + paste-a-token fallback for the Meta Marketing API
       FolderPicker.jsx      search box over Drive folders
-      RunLog.jsx            step-by-step progress of a campaign copy
+      RunPanel.jsx          one saved run: upload / create-campaign buttons, per-video status, delete
+      RunLog.jsx            step-by-step progress of a run
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -139,7 +140,8 @@ src/
     driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
     meta.js                 Meta Graph API (v24.0): accounts, campaigns, copies, chunked video upload, creative swap
     metaAuth.js             connectMeta() (Facebook login via Firebase), get/set/clear the Meta token
-    campaignCopy.js         runCampaignCopy(): the whole Drive → Meta pipeline, with progress callbacks
+    campaignCopy.js         uploadVideos() and finishRun(): the two stages of the Drive → Meta pipeline; runProgress()
+    campaignRuns.js         Firestore: saved runs (campaignRuns) and the upload ledger (metaUploads)
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -332,12 +334,17 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 1. **Connect Meta**: **Continue with Facebook** (token pulled automatically through Firebase), or paste a token as a fallback. Pick the ad account (remembered).
 2. **Template campaign**: pick a campaign; it lists the ad sets to copy and the ads. Pick the **template ad** whose text, headline, link, CTA, page/Instagram identity, URL tags and tracking will be reused.
 3. **Videos**: pick a Drive folder; every video directly inside it is listed and selected (untick to skip).
-4. **Review and create**: name the campaign (default "<template> — <folder>"), then create. The run:
-   1. downloads each video from Drive into the browser and uploads it to the ad account (chunked, retries flaky chunks), then waits for Meta to process it and takes its thumbnail. Nothing is created in the campaign tree until at least one video is ready;
-   2. copies the campaign (`/{id}/copies`, shallow, `PAUSED`) and renames it;
-   3. copies **every** ad set into it (shallow, `PAUSED`), so targeting, budget, schedule, optimization and placements are identical;
-   4. creates one creative per video from the template creative with only the video and thumbnail swapped, then one ad per video **in each ad set**, named after the file, `PAUSED`.
-   A failed video or ad is listed at the end without stopping the rest; "Stop after current step" stops cleanly. The result links to the campaign in Ads Manager.
+4. **Review and start**: name the campaign (default "<template> — <folder>") and **Save run and continue**. This saves a **run** to Firestore and opens it. Runs are listed under **Saved runs** and can be continued on any device.
+
+Each run has two stages. Progress is saved after every step, so either stage can be stopped ("Stop after current step", a closed tab, an expired login) and continued later where it left off:
+
+1. **Upload**: each video goes Drive → browser → the ad account's video library, two at a time (chunked, retries flaky chunks). A video **already in that ad account is reused** instead of uploaded again:
+   - first by the upload ledger (`metaUploads`, keyed by ad account + the Drive file's MD5), so a renamed or moved copy of the same file still matches; the video is checked to still exist on Meta;
+   - otherwise by title, for videos uploaded before the ledger existed: exactly one video in the library with the same file name.
+   Once every video is uploaded, **the device can be shut down**: Meta processes the videos on its own.
+2. **Create campaign and ads**: checks which videos Meta has finished processing (every 10 s while the page is open). For each ready video it makes a creative from the template creative with only the video and thumbnail swapped. Only after the first creative works does it copy the campaign (`/{id}/copies`, shallow, `PAUSED`, renamed) and **every** ad set (shallow, `PAUSED`, so targeting, budget, schedule, optimization and placements are identical); a template Meta rejects leaves nothing behind. Then it creates one ad per video **in each ad set**, named after the file, `PAUSED`. Ads appear as each video becomes ready. A video Meta can't process (or that was deleted from the library) goes back to "to upload".
+
+A failed video, ad set or ad is shown on the run without stopping the rest, and is retried next time you continue. **Delete saved run** only removes the record; nothing on Meta is deleted.
 
 ### Supported template ads
 
@@ -361,12 +368,20 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 **Using it:** on `/admin/campaigns`, **Continue with Facebook**. The first time, the Facebook account is linked to the owner's Firebase user (you still sign in to the site with Google); after that it re-authenticates. Facebook's token lasts 1–2 hours; reconnecting is one click. A longer-lived token would need a server to exchange it with the app secret (e.g. a Firebase Function, which requires the paid Blaze plan).
 
+**Firestore** (saved runs and the upload ledger; one time):
+
+6. https://console.firebase.google.com/project/latest-avenue-app/firestore → **Create database**, production mode, any location (e.g. `nam5`).
+7. Its **Rules** tab: paste `firestore.rules` (owner only) and **Publish**. Or `firebase deploy --only firestore:rules --project latest-avenue-app`.
+
+Until then the campaign page says saved runs aren't available, and new runs can't start.
+
 **Fallback: paste a token.** "Or paste an access token instead": generate one in the Graph API Explorer (https://developers.facebook.com/tools/explorer/) with the same permissions. Optionally **Extend** it in the Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/) to ~60 days and tick "Remember on this browser" (kept in `localStorage`; treat it like a password).
 
 ### Notes and limits
 
-- Everything runs in the browser: videos stream Drive → browser memory → Meta, so very large videos need RAM and a steady connection. Keep the tab open until it finishes.
-- The run needs at least 20 minutes left on the Drive connection; otherwise it asks you to reconnect Drive first.
+- Everything runs in the browser: videos stream Drive → browser memory → Meta, so very large videos need RAM and a steady connection. Keep the tab open until the upload stage finishes; after that only Meta's processing is left.
+- Stage 2 also runs in the browser: ads are only created while a run's page is open. Fully hands-off creation would need a server holding the Meta token (not built).
+- Uploading needs at least 20 minutes left on the Drive connection; otherwise it asks you to reconnect Drive first. The Meta token lasts 1–2 hours; if it expires mid-run, reconnect and continue.
 - If an ad set's end date is in the past, Meta refuses to copy it; edit it in Ads Manager first (the picker warns about this).
 - Uploaded videos stay in the ad account's video library even if a later step fails. Partial campaigns are paused; delete them in Ads Manager if needed.
 - `GRAPH_VERSION` in `src/lib/meta.js` is the Graph API version; bump it when Meta deprecates it (roughly every two years).
@@ -397,20 +412,13 @@ Content (Sam to supply):
 Features and technical:
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
 - [x] Firebase setup: project `latest-avenue-app`, Google sign-in enabled, owner = metrothenews@gmail.com
-- [ ] **Facebook login for Meta** (code done, untested; the paste-a-token fallback works meanwhile). Full steps in "Meta campaign builder → One-time Meta setup":
-  - [ ] Meta app: add the Facebook Login (or Facebook Login for Business) product
-  - [ ] Meta app: add `https://latest-avenue-app.firebaseapp.com/__/auth/handler` to Valid OAuth Redirect URIs
-  - [ ] Login for Business only: create a User access token configuration with the 6 permissions, put its ID in `facebookConfigId` (`src/data/meta.js`)
-  - [ ] Firebase: enable the Facebook provider with the Meta App ID + App secret (secret stays in Firebase)
-  - [ ] Test "Continue with Facebook" on /admin/campaigns: first click links Facebook to the owner account, later clicks re-authenticate; ad accounts should load
-  - [ ] If the popup errors, check the redirect URI, that the app is in Development mode with your account as admin, and the `config_id`
-  - [ ] Later, optional: a long-lived (~60-day) token needs a server-side exchange with the app secret (Firebase Function, paid Blaze plan)
+- [x] **Facebook login for Meta**: "Continue with Facebook" on /admin/campaigns works (Meta app 1761272091762214, Firebase Facebook provider enabled; tested 2026-10-31). The paste-a-token fallback stays as a backup.
+- [ ] Later, optional: a long-lived (~60-day) Meta token needs a server-side exchange with the app secret (Firebase Function, paid Blaze plan)
 - [ ] **Campaign builder, next session:**
   - Re-test with the link fix. The first real run (folder "assignment 14", template "Q4 26 Song Album Name Test Playlist Follow Objective") failed every creative with "The link field is required"; the fix reads the link from `link_url` / `object_url` / feed `link_urls` and fills the CTA, but is untested against Meta. If it still fails, use "Show template ad details" on /admin/campaigns.
   - Delete the empty paused campaign "…— assignment 14" in Ads Manager, and optionally the 20 unused videos from that run in the ad account's media library.
-  - Skip duplicate uploads: put the Drive file ID in the Meta video title (`name [drive:<id>]`) and reuse a ready video with that ID instead of re-uploading.
-  - "Stop uploading and create with ready videos": when stopped during uploads, still copy the campaign and make ads for the videos already processed.
-- [ ] When the first feature stores data: create Firestore and run `firebase deploy --only firestore:rules --project latest-avenue-app` (rules already have the owner UID)
+  - Create Firestore and publish `firestore.rules` (Meta campaign builder → Firestore), then test saved runs end to end: upload half a folder, stop, continue; finish on another device. Code untested against real Firestore and Meta (stage logic checked against fakes only).
+  - The 20 videos from the "assignment 14" run should be reused by title on the next run of that folder.
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
 - [ ] Make `og:image` in `index.html` an absolute URL once the domain is known
