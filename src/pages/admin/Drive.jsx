@@ -252,6 +252,9 @@ export default function Drive() {
               <span className="font-semibold">{views.find((v) => v.id === view).label}</span>
             )}
             {!loading && <span className="ml-auto text-xs text-white/40">{files.length}{nextPage ? '+' : ''} items</span>}
+            {view === 'mine' && !search && folderId !== 'root' && (
+              <Button to={`/admin/campaigns?folder=${encodeURIComponent(folderId)}`} variant="secondary" className="ml-3 px-3 py-1.5 text-xs">New Meta campaign from this folder</Button>
+            )}
           </nav>
 
           {error && (

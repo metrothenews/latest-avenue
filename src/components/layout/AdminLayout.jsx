@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthProvider.jsx'
 const adminNav = [
   { label: 'Dashboard', to: '/admin' },
   { label: 'Drive', to: '/admin/drive' },
+  { label: 'Campaigns', to: '/admin/campaigns' },
 ]
 
 // Header + content for owner-only pages under /admin.

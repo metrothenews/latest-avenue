@@ -18,6 +18,7 @@ export const seo = {
   '/login': { title: `Sign in | ${site.name}`, description },
   '/admin': { title: `Admin | ${site.name}`, description },
   '/admin/drive': { title: `Drive | ${site.name}`, description },
+  '/admin/campaigns': { title: `New Meta campaign | ${site.name}`, description },
 }
 
 export const notFoundTitle = `Page not found | ${site.name}`

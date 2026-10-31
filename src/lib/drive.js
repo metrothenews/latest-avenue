@@ -82,6 +82,34 @@ export async function folderPath(token, folderId) {
 
 export const isFolder = (file) => file.mimeType === FOLDER
 
+// Every video directly inside a folder, sorted by name.
+export async function listVideos(token, folderId) {
+  const params = new URLSearchParams({
+    q: `${quote(folderId)} in parents and trashed = false and mimeType contains 'video/'`,
+    fields: 'nextPageToken,files(id,name,mimeType,size,thumbnailLink,iconLink)',
+    orderBy: 'name_natural',
+    pageSize: '1000',
+  })
+  const files = []
+  let page = {}
+  do {
+    if (page.nextPageToken) params.set('pageToken', page.nextPageToken)
+    page = await request(token, `${API}?${params}`)
+    files.push(...(page.files ?? []))
+  } while (page.nextPageToken)
+  return files
+}
+
+export const getFile = (token, id) => request(token, `${API}/${encodeURIComponent(id)}?fields=id,name,mimeType`)
+
+// Downloads a file's bytes into memory.
+export async function downloadFile(token, id) {
+  const res = await fetch(`${API}/${encodeURIComponent(id)}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
+  if (res.status === 401) throw new DriveError('Your Drive session expired.', 'auth')
+  if (!res.ok) throw new DriveError(`Couldn't download from Drive (${res.status}).`, 'other')
+  return res.blob()
+}
+
 // Google's embeddable preview for a file, or null for folders.
 export function previewUrl(file) {
   if (isFolder(file) || !file.webViewLink) return null

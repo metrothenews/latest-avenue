@@ -93,7 +93,7 @@ src/
     layout/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
       AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
-      AdminLayout.jsx       header (logo, "admin", Dashboard/Drive nav, email, sign out) + content for /admin pages
+      AdminLayout.jsx       header (logo, "admin", Dashboard/Drive/Campaigns nav, email, sign out) + content for /admin pages
       Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
@@ -112,6 +112,10 @@ src/
       FileResults.jsx       Drive files as a list or thumbnail grid
       FileIcon.jsx          Drive type icon or thumbnail
       FilePreview.jsx       modal with Google's embedded preview + "Open in Drive"
+    meta/
+      MetaConnect.jsx       paste-a-token form for the Meta Marketing API
+      FolderPicker.jsx      search box over Drive folders
+      RunLog.jsx            step-by-step progress of a campaign copy
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -125,6 +129,7 @@ src/
     Login.jsx               owner sign-in with Google
     admin/Dashboard.jsx     /admin landing page: cards linking to each owner-only tool
     admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
+    admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
     NotFound.jsx            404
 
   data/                     ALL site copy and content (see below)
@@ -132,6 +137,9 @@ src/
     spotify.js              spotifyEmbedUrl(url): open.spotify.com link → embed URL (null if not Spotify)
     drive.js                Drive API v3: listFiles(), folderPath(), views/types/sorts, typeLabel(), fileSize(), shortDate()
     driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
+    meta.js                 Meta Graph API (v24.0): accounts, campaigns, copies, chunked video upload, creative swap
+    metaAuth.js             get/set/clear the pasted Meta token (sessionStorage, or localStorage if remembered)
+    campaignCopy.js         runCampaignCopy(): the whole Drive → Meta pipeline, with progress callbacks
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -153,6 +161,7 @@ Defined in `src/App.jsx`.
 | `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
+| `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
@@ -313,6 +322,45 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ---
 
+## Meta campaign builder
+
+`/admin/campaigns` takes an existing Meta ads campaign and a Google Drive folder of videos, and creates a **new, paused** campaign with identical settings and one ad per video. Also reachable from the Drive page via **New Meta campaign from this folder**.
+
+### What it does
+
+1. **Connect Meta**: paste a user access token (see setup). Pick the ad account (remembered).
+2. **Template campaign**: pick a campaign; it lists the ad sets to copy and the ads. Pick the **template ad** whose text, headline, link, CTA, page/Instagram identity, URL tags and tracking will be reused.
+3. **Videos**: pick a Drive folder; every video directly inside it is listed and selected (untick to skip).
+4. **Review and create**: name the campaign (default "<template> — <folder>"), then create. The run:
+   1. downloads each video from Drive into the browser and uploads it to the ad account (chunked, retries flaky chunks), then waits for Meta to process it and takes its thumbnail. Nothing is created in the campaign tree until at least one video is ready;
+   2. copies the campaign (`/{id}/copies`, shallow, `PAUSED`) and renames it;
+   3. copies **every** ad set into it (shallow, `PAUSED`), so targeting, budget, schedule, optimization and placements are identical;
+   4. creates one creative per video from the template creative with only the video and thumbnail swapped, then one ad per video **in each ad set**, named after the file, `PAUSED`.
+   A failed video or ad is listed at the end without stopping the rest; "Stop after current step" stops cleanly. The result links to the campaign in Ads Manager.
+
+### Supported template ads
+
+- Single **video** ads: video swapped.
+- Single **image** ads: turned into video ads with the same text, headline, description, link and CTA.
+- **Flexible / dynamic creative** (`asset_feed_spec`): same text options, one video.
+- Not supported (flagged in the picker): **carousels**, and ads that promote an **existing post** (their media can't be swapped).
+
+### One-time Meta setup
+
+1. Go to https://developers.facebook.com/apps, log in with the Facebook account that manages the ad account, **Create app**. Choose the use case for creating and managing ads with the Marketing API (app type Business if asked), name it e.g. "latest avenue tools". It can stay in **Development mode**: app admins can use every permission on their own ad accounts without Meta's App Review.
+2. Each session: open the Graph API Explorer (https://developers.facebook.com/tools/explorer/), select that app, choose **Get User Access Token**, tick `ads_management, ads_read, business_management, pages_show_list, pages_read_engagement, pages_manage_ads`, **Generate Access Token**, and paste it into step 1. It lasts about an hour.
+3. Optional, for fewer pastes: the Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/) can **Extend** the token to ~60 days. Tick "Remember on this browser" to keep it in `localStorage`. Treat that token like a password (it can create and edit ads).
+
+### Notes and limits
+
+- Everything runs in the browser: videos stream Drive → browser memory → Meta, so very large videos need RAM and a steady connection. Keep the tab open until it finishes.
+- The run needs at least 20 minutes left on the Drive connection; otherwise it asks you to reconnect Drive first.
+- If an ad set's end date is in the past, Meta refuses to copy it; edit it in Ads Manager first (the picker warns about this).
+- Uploaded videos stay in the ad account's video library even if a later step fails. Partial campaigns are paused; delete them in Ads Manager if needed.
+- `GRAPH_VERSION` in `src/lib/meta.js` is the Graph API version; bump it when Meta deprecates it (roughly every two years).
+
+---
+
 ## Conventions
 
 - **Brand name is lowercase: "latest avenue".** Use `site.name` in JSX instead of hard-coding it.
@@ -337,6 +385,11 @@ Content (Sam to supply):
 Features and technical:
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
 - [x] Firebase setup: project `latest-avenue-app`, Google sign-in enabled, owner = metrothenews@gmail.com
+- [ ] **Campaign builder, next session:**
+  - Re-test with the link fix. The first real run (folder "assignment 14", template "Q4 26 Song Album Name Test Playlist Follow Objective") failed every creative with "The link field is required"; the fix reads the link from `link_url` / `object_url` / feed `link_urls` and fills the CTA, but is untested against Meta. If it still fails, use "Show template ad details" on /admin/campaigns.
+  - Delete the empty paused campaign "…— assignment 14" in Ads Manager, and optionally the 20 unused videos from that run in the ad account's media library.
+  - Skip duplicate uploads: put the Drive file ID in the Meta video title (`name [drive:<id>]`) and reuse a ready video with that ID instead of re-uploading.
+  - "Stop uploading and create with ready videos": when stopped during uploads, still copy the campaign and make ads for the videos already processed.
 - [ ] When the first feature stores data: create Firestore and run `firebase deploy --only firestore:rules --project latest-avenue-app` (rules already have the owner UID)
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
@@ -361,6 +414,7 @@ npm run dev       # then check in the browser:
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
 - `/roster` and `/case-studies` redirect to `/`
 - `/admin/drive` (signed in as owner): Connect Drive works; search, view tabs, type chips, sort, list/grid, folder breadcrumbs, Load more and the preview modal all work
+- `/admin/campaigns`: connect Meta, pick account → campaign → template ad → Drive folder, create; check the new paused campaign in Ads Manager
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll
