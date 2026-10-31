@@ -2,12 +2,12 @@
 // The web config isn't secret (it ships to every browser); access is enforced by `ownerUid` here
 // and, for any stored data, by the Firestore rules in firestore.rules.
 export const firebaseConfig = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  appId: '',
+  apiKey: 'AIzaSyClwpXvwr-4UFDDCIWBlZsIZfncrDKPC5k',
+  authDomain: 'latest-avenue-app.firebaseapp.com',
+  projectId: 'latest-avenue-app',
+  appId: '1:91445930665:web:cc1c22052b6ae8bcf617b8',
 }
 
 // Your Firebase user ID. Sign in once at /login and the page shows it; paste it here
 // and into firestore.rules. Until it's set, nobody can open /admin.
-export const ownerUid = ''
+export const ownerUid = 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2' // metrothenews@gmail.com

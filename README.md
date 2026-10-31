@@ -268,7 +268,14 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 
 **How secure is it?** The route guard (`RequireOwner`) only hides pages in the browser; the JavaScript for `/admin` still ships to anyone who looks for it. That's fine for UI, but **any private data must live in Firestore (or another Firebase service) behind `firestore.rules`**, which Google enforces on its servers. Never put secrets (API keys for paid services, private info) in front-end code.
 
-### One-time setup
+### Current setup
+
+- Firebase project: **`latest-avenue-app`** (display name "latest avenue"), created with the Firebase CLI under samuelrooker27@gmail.com. Console: https://console.firebase.google.com/project/latest-avenue-app
+- Web app "latest avenue site"; its config is in `src/data/firebase.js`.
+- Google sign-in enabled. Owner account: **metrothenews@gmail.com** (its UID is `ownerUid` and is in `firestore.rules`).
+- To change the owner: have the new account sign in once at `/login`, run `firebase auth:export users.json --project latest-avenue-app` to find its `localId`, put that in `ownerUid` and `firestore.rules`, then delete `users.json`.
+
+### One-time setup (for reference / a new project)
 
 1. Go to console.firebase.google.com → **Add project** (Google Analytics not needed).
 2. **Build → Authentication → Get started → Sign-in method → Google → Enable**, pick a support email, Save.
@@ -307,7 +314,8 @@ Content (Sam to supply):
 
 Features and technical:
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
-- [ ] Firebase setup: create project, fill in `src/data/firebase.js`, set `ownerUid` (see Owner login)
+- [x] Firebase setup: project `latest-avenue-app`, Google sign-in enabled, owner = metrothenews@gmail.com
+- [ ] When the first feature stores data: create Firestore and run `firebase deploy --only firestore:rules --project latest-avenue-app` (rules already have the owner UID)
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
 - [ ] Make `og:image` in `index.html` an absolute URL once the domain is known
