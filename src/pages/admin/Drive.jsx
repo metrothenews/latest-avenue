@@ -8,8 +8,9 @@ import { fieldClass } from '../../components/ui/fieldStyles.js'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { clearDriveToken, connectDrive, getDriveToken } from '../../lib/driveAuth.js'
 import { folderPath, isFolder, listFiles, sorts, types, views } from '../../lib/drive.js'
+import { firebaseConfig } from '../../data/firebase.js'
 
-const DRIVE_API_URL = 'https://console.cloud.google.com/apis/library/drive.googleapis.com?project=latest-avenue-app'
+const DRIVE_API_URL = `https://console.cloud.google.com/apis/library/drive.googleapis.com?project=${firebaseConfig.projectId}`
 
 const chip = (active) =>
   `rounded-full border px-3 py-1.5 text-sm ${active ? 'border-white/30 bg-white/15 text-white' : 'border-white/10 text-white/60 hover:border-white/20 hover:text-white'}`
