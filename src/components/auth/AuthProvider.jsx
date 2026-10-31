@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
 import { auth, firebaseConfigured } from '../../lib/firebase.js'
+import { clearDriveToken } from '../../lib/driveAuth.js'
 import { ownerUid } from '../../data/firebase.js'
 
 const AuthContext = createContext(null)
@@ -47,7 +48,10 @@ export default function AuthProvider() {
     loading,
     isOwner: Boolean(user && ownerUid && user.uid === ownerUid),
     signIn,
-    signOut: () => signOut(auth),
+    signOut: () => {
+      clearDriveToken()
+      return signOut(auth)
+    },
   }
 
   return <AuthContext.Provider value={value}><Outlet /></AuthContext.Provider>

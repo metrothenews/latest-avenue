@@ -1,13 +1,27 @@
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 
-// Landing page for owner-only features. Add new tools as routes under /admin in App.jsx.
+const tools = [
+  { to: '/admin/drive', title: 'Drive', text: 'Search and preview your Google Drive files.' },
+]
+
+// Landing page for owner-only features. Add new tools as routes under /admin in App.jsx and list them here.
 export default function Dashboard() {
   const { user } = useAuth()
   return (
     <div>
       <h1 className="text-4xl font-extrabold tracking-tight">Dashboard</h1>
       <p className="mt-3 text-white/60">Signed in as {user.displayName ?? user.email}.</p>
-      <div className="glass mt-10 p-8 text-white/60">No tools yet. Owner-only features will live here.</div>
+      <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {tools.map((t) => (
+          <li key={t.to}>
+            <Link to={t.to} className="glass block p-6 hover:border-white/30">
+              <h2 className="text-lg font-semibold">{t.title}</h2>
+              <p className="mt-2 text-sm text-white/60">{t.text}</p>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

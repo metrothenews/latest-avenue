@@ -17,6 +17,7 @@ export const seo = {
   '/terms': { title: `${legal.terms.title} | ${site.name}`, description },
   '/login': { title: `Sign in | ${site.name}`, description },
   '/admin': { title: `Admin | ${site.name}`, description },
+  '/admin/drive': { title: `Drive | ${site.name}`, description },
 }
 
 export const notFoundTitle = `Page not found | ${site.name}`
