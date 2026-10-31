@@ -11,7 +11,8 @@ export const flagship = {
   streams: '[X]M+',
   latestRelease: '[Title]',
   quote: '[Quote from Metro The News, in his own words.]',
-  spotifyUrl: '#',
+  // Public Spotify artist link (Share → Copy link to artist). Powers the homepage player.
+  spotifyUrl: 'https://open.spotify.com/artist/2OM8IgYZBb9Wm57RfA6nm8',
 }
 
 const placeholder = (n) => ({

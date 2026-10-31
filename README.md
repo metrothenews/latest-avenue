@@ -1,8 +1,8 @@
 # latest avenue — website
 
-Marketing website for **latest avenue**, an independent hip-hop record label founded by **Sam Rooker**. The flagship artist is **Metro The News**.
+Website for **latest avenue**, an independent hip-hop record label founded by **Sam Rooker**. The flagship artist is **Metro The News**.
 
-React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeScript). There is **no server of our own**. The demo form can POST to a form service (Formspree etc.) once `site.demoFormEndpoint` is set, and an **owner-only admin area** (`/login` → `/admin`) uses Firebase Google sign-in, restricted to Sam's account (see [Owner login](#owner-login)).
+React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeScript). There is **no server of our own**. The public site is a minimal homepage (headline, login link, Metro The News' Spotify player) plus contact and legal pages, and an **owner-only admin area** (`/login` → `/admin`) uses Firebase Google sign-in, restricted to Sam's account (see [Owner login](#owner-login)).
 
 ---
 
@@ -17,11 +17,10 @@ React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeSc
 7. [Content and data files](#content-and-data-files)
 8. [Design system](#design-system)
 9. [Components](#components)
-10. [Forms](#forms)
-11. [Owner login](#owner-login)
-12. [Conventions](#conventions)
-13. [Open TODOs](#open-todos)
-14. [Verifying changes](#verifying-changes)
+10. [Owner login](#owner-login)
+11. [Conventions](#conventions)
+12. [Open TODOs](#open-todos)
+13. [Verifying changes](#verifying-changes)
 
 ---
 
@@ -49,6 +48,8 @@ Useful context for anyone (or any AI assistant) continuing the work:
 3. **Rebranded to latest avenue.** All intellijend copy was replaced with record-label copy (hip-hop only), "Case studies" became the **Roster** page, and the old SaaS-only sections (dashboard mockups, pricing, ad gallery, algorithm research, reviews) were removed.
 4. **The brand name is always lowercase**: "latest avenue", even at the start of a sentence.
 5. The hero headline is **"the label of the future is here"**.
+6. **Owner login added** (Firebase Google sign-in, `/login` → `/admin`) so Sam can build private tools.
+7. **Stripped back to a minimal homepage.** All sales sections (problem, approach, services, deals, founder, lessons, comparison, demo form, FAQ, platforms, CTA), the roster page and the Formspree demo-form wiring were removed. They're recoverable from git (commit `3fd744a` and earlier).
 
 The folder is still named `Intellijend Clone`, a leftover from step 1 that is safe to rename. (`package.json` was renamed to `latest-avenue`.)
 
@@ -96,20 +97,17 @@ src/
       Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
-      ScrollToHash.jsx      scrolls to #anchor on navigation (e.g. /#submit), else to top
+      ScrollToHash.jsx      scrolls to #anchor on navigation (e.g. /#metro-the-news), else to top
       PageMeta.jsx          sets tab title + meta description per route (from data/seo.js)
     ui/
       Button.jsx            Link / <a> / <button> with variants (primary, secondary, ghost)
       Section.jsx           standard section wrapper: padding, max width, optional title/subtitle
       Eyebrow.jsx           small uppercase label above headings
-      Accordion.jsx         one-open-at-a-time Q&A list (used by FAQ)
-      Modal.jsx             dialog: Esc / backdrop / X to close, locks page scroll
-      TextField.jsx         input or textarea (as="textarea") with label + error message
+      Modal.jsx             dialog: Esc / backdrop / X to close, locks page scroll (unused; kept for admin tools)
+      TextField.jsx         input or textarea (as="textarea") with label + error message (unused; kept for admin tools)
       fieldStyles.js        fieldClass(error): shared input/select/textarea styling
       Notice.jsx            inline status message box
       Placeholder.jsx       dashed "content goes here" box (currently unused, kept for mockups)
-    artists/
-      FlagshipArtist.jsx    big feature card for the flagship artist (homepage)
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -120,13 +118,13 @@ src/
     Home.jsx                lists homepage sections in order
     Contact.jsx             contact page
     Legal.jsx               template for privacy + terms (driven by data/legal.js)
-    Login.jsx               owner sign-in with Google (unlinked)
+    Login.jsx               owner sign-in with Google
     admin/Dashboard.jsx     /admin landing page for owner-only tools
     NotFound.jsx            404
 
   data/                     ALL site copy and content (see below)
   lib/
-    submitForm.js           submitForm(endpoint, data): JSON POST to a form service
+    spotify.js              spotifyEmbedUrl(url): open.spotify.com link → embed URL (null if not Spotify)
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -150,7 +148,7 @@ Defined in `src/App.jsx`.
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
-Links like `/#submit` or `/#faq` work from any page: `ScrollToHash` scrolls to the element with that id after navigation.
+Links like `/#metro-the-news` work from any page: `ScrollToHash` scrolls to the element with that id after navigation.
 
 ---
 
@@ -160,18 +158,10 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 
 | # | File | id | Content | Data source |
 |---|---|---|---|---|
-| 1 | Hero.jsx | `hero` | founder pill, headline "the label of the future is here", "Submit Your Music" button, "Home of Metro The News" | site.js, roster.js |
-| 2 | Problem.jsx | `problem` | "The Independent Rapper's Trap": Control / Money / Time | label.js `traps` |
-| 3 | Approach.jsx | `approach` | "Major-label moves. Independent terms." (no button) | inline |
-| 4 | Deals.jsx | `deals` | Single Deal + Project Deal cards → link to `/?deal=<id>#submit` | deals.js |
-| 5 | Founder.jsx | `founder` | Sam Rooker story, lessons, stats | label.js `founder` |
-| 6 | Flagship.jsx | `metro-the-news` | FlagshipArtist card | roster.js `flagship` |
-| 7 | StreamingLessons.jsx | `lessons` | 4 lesson cards | label.js `lessons` |
-| 8 | Comparison.jsx | `comparison` | "latest avenue vs. Going It Alone" table | comparison.js |
-| 9 | SubmitDemo.jsx | `submit` | demo submission form | deals.js `dealOptions` |
-| 10 | FAQ.jsx | `faq` | accordion + contact email | faq.js |
-| 11 | Platforms.jsx | `platforms` | streaming platform chips | label.js `platforms` |
-| 12 | FinalCTA.jsx | `get-started` | "Your Next Drop Starts Here" | site.js |
+| 1 | Hero.jsx | `hero` | headline "the label of the future is here" + "login" button | inline |
+| 2 | Listen.jsx | `metro-the-news` | glass card: "Flagship artist", name, "Open in Spotify", Spotify's embedded player (top tracks). Shows a `[bracketed]` placeholder until `spotifyUrl` is set | roster.js `flagship` |
+
+The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<id>`), so it needs no API key and always shows Spotify's current data. Spotify may set its own cookies inside the iframe; mention it in the privacy policy.
 
 ---
 
@@ -189,15 +179,11 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 
 | File | Exports | What it holds |
 |---|---|---|
-| `site.js` | `site` | `name` ('latest avenue'), `founder`, `supportEmail` (**placeholder: you@example.com**), `replyDays`, `submitPath` ('/#submit'), `demoFormEndpoint` (form service URL; empty = not connected) |
+| `site.js` | `site` | `name` ('latest avenue'), `founder`, `supportEmail` (**placeholder: you@example.com**) |
 | `firebase.js` | `firebaseConfig`, `ownerUid` | Firebase web config and the owner's user ID (see Owner login) |
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
-| `roster.js` | `flagship`, `artists` | artists (see shape below); `artists[0]` is the flagship (homepage feature card); all artists' quotes show on the /login side panel |
-| `label.js` | `traps`, `services`, `founder`, `lessons`, `platforms` | homepage copy blocks (`services` is unused since the Services section was removed; kept in case it comes back) |
-| `deals.js` | `deals`, `dealOptions` | deal cards; options for the demo form's deal dropdown |
-| `comparison.js` | `columns`, `rows` | comparison table; a row is an array of cells, or `{ highlight: true, cells }` for latest avenue's row |
-| `faq.js` | `faq` | `[{ id, question, answer }]` built from `[question, answer]` pairs |
+| `roster.js` | `flagship`, `artists` | artists (see shape below); `flagship.spotifyUrl` powers the homepage player; all artists' quotes show on the /login side panel |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
 ### Artist shape (`roster.js`)
@@ -211,14 +197,14 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
   after: null,               // monthly listeners now (number or null)
   months: null,              // months since signing (number or null)
   quote: '...',
-  spotifyUrl: '#',
+  spotifyUrl: '',            // public open.spotify.com/artist/... link; flagship's powers the homepage player
   // flagship only:
   streams: '[X]M+',          // display string
   latestRelease: '[Title]',
 }
 ```
 
-To add an artist, append an object to `artists`. They appear in the /login side-panel quotes. (The /roster page and homepage roster preview were removed.)
+To add an artist, append an object to `artists`. They appear in the /login side-panel quotes. The bio/stat fields are currently unused (the roster page and stats card were removed).
 
 ---
 
@@ -252,7 +238,7 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 ### Typography and layout
 
 - Inter font. Headings use `font-bold`/`font-extrabold` and `tracking-tight`. h1 is `text-4xl md:text-6xl`, section h2 is `text-3xl md:text-4xl`.
-- Content width: `max-w-6xl` centered, `px-4` side padding. Sections are `py-16 md:py-24`; use `<Section>`.
+- Content width: `max-w-6xl` centered (the homepage card is `max-w-3xl`), `px-4` side padding. Sections are `py-16 md:py-24`; use `<Section>`.
 - Mobile-first: grids collapse to one column; the header switches to a ☰ menu below `md`.
 - **No animations** (no marquees, carousels with auto-play, scroll effects or animated canvases) unless Sam asks for them. This was an explicit early decision.
 
@@ -265,36 +251,20 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 <Button href="https://…" target="_blank" rel="noreferrer">…</Button>   // external link
 <Button onClick={fn} variant="secondary">…</Button>    // button; type="submit" also works
 
-<Section id="faq" title="…" subtitle="…">…</Section>
+<Section id="x" title="…" subtitle="…">…</Section>
 
 <TextField id="x" name="x" label="Label" showLabel value={v} onChange={fn} error={err} />
 <TextField id="msg" as="textarea" rows={4} … />      // textarea
 <select className={fieldClass(error)}>…</select>      // match field styling
 
 <Modal open={bool} onClose={fn} title="…">…</Modal>
-<Accordion items={[{ id, question, answer }]} />
-<FlagshipArtist artist={flagship} />
 ```
-
----
-
-## Forms
-
-Only the demo form sends data, and only once `site.demoFormEndpoint` is set.
-
-| Form | File | Validation | On submit |
-|---|---|---|---|
-| Demo submission | `sections/home/SubmitDemo.jsx` | name, artist name, valid email, link must start with http(s):// | with an endpoint: POSTs `values` + `_subject` as JSON, shows "Sending…", then thank-you or an error notice. Without one: thank-you state that says nothing was sent |
-
-The demo form reads `?deal=single|project` from the URL to preselect the deal dropdown. The deal cards link to `/?deal=<id>#submit`.
-
-**Connecting the demo form (Formspree):** create a free account at formspree.io, make a new form, copy its endpoint (`https://formspree.io/f/xxxxxxx`) into `demoFormEndpoint` in `src/data/site.js`, then submit a test demo and confirm the email. Formspree uses the `email` field as the reply-to address. Any service that accepts a JSON POST and returns 2xx works the same way. Update the privacy policy (section 1.1 Demo Submissions) to name the service.
 
 ---
 
 ## Owner login
 
-`/login` signs in with Google through Firebase Auth. Only the account whose user ID matches `ownerUid` in `src/data/firebase.js` can open `/admin`; anyone else who signs in sees "this account doesn't have access". The header's "login" button links to `/login`; `robots.txt` keeps `/login` and `/admin` out of search engines.
+`/login` signs in with Google through Firebase Auth. Only the account whose user ID matches `ownerUid` in `src/data/firebase.js` can open `/admin`; anyone else who signs in sees "this account doesn't have access". The header's and homepage's "login" buttons link to `/login`; `robots.txt` keeps `/login` and `/admin` out of search engines.
 
 **How secure is it?** The route guard (`RequireOwner`) only hides pages in the browser; the JavaScript for `/admin` still ships to anyone who looks for it. That's fine for UI, but **any private data must live in Firestore (or another Firebase service) behind `firestore.rules`**, which Google enforces on its servers. Never put secrets (API keys for paid services, private info) in front-end code.
 
@@ -330,20 +300,14 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 ## Open TODOs
 
 Content (Sam to supply):
-- [ ] Metro The News: bio, quote, monthly listeners before/after, months, streams, latest release, Spotify URL (`data/roster.js`)
-- [ ] Other roster artists (currently `[Artist 2]`–`[Artist 4]` placeholders)
-- [ ] Sam's founder story and label stats (`data/label.js` → `founder`)
-- [ ] Deal terms: royalty splits, number of releases (`data/deals.js`)
-- [ ] FAQ answers in brackets: masters/publishing, splits, deal length, creative support (`data/faq.js`)
-- [ ] Real contact email and reply time (`data/site.js`)
-- [ ] Privacy policy and terms text, plus "last updated" dates (`data/legal.js`); have a lawyer review
-- [ ] "[Your terms]" cell in the comparison table (`data/comparison.js`)
+- [x] Metro The News' Spotify artist link (`flagship.spotifyUrl` in `data/roster.js`)
+- [ ] Metro The News' quote, other artists' names/quotes (shown on /login)
+- [ ] Real contact email (`data/site.js`)
+- [ ] Privacy policy and terms text, plus "last updated" dates (`data/legal.js`); mention Firebase sign-in and the Spotify embed; remove "Demo Submissions"; have a lawyer review
 
 Features and technical:
-- [ ] Create a Formspree form and paste its endpoint into `site.demoFormEndpoint` (code is ready)
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
 - [ ] Firebase setup: create project, fill in `src/data/firebase.js`, set `ownerUid` (see Owner login)
-- [ ] Artist photos / cover art (none yet)
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
 - [ ] Make `og:image` in `index.html` an absolute URL once the domain is known
@@ -363,10 +327,9 @@ npm run build     # must succeed with no errors
 npm run dev       # then check in the browser:
 ```
 
-- `/`: all 12 sections render; header links work, "login" goes to `/login`, and `/#submit` scrolls correctly
-- Demo form: empty submit shows errors; valid submit shows the thank-you state; `/?deal=project#submit` preselects "Project deal"
+- `/`: headline, "login" button and the Metro The News card render; with `spotifyUrl` set the player loads, without it the placeholder shows; both "login" buttons go to `/login`
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
 - `/roster` and `/case-studies` redirect to `/`
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
-- Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll (the comparison table scrolls inside its own box)
+- Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll
