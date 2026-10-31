@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+  background: #0a0a0a;
+}
+body {
+  @apply text-white font-sans antialiased;
+}
+
+/* Page background, matched to the live site: near-black (#0a0a0a)
+   with a faint blue-violet glow at the top and a hint of cyan bottom-right */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(70% 55% at 50% 0%, rgba(130, 115, 255, 0.14), transparent 70%),
+    radial-gradient(50% 50% at 100% 100%, rgba(60, 170, 255, 0.06), transparent 70%),
+    #0a0a0a;
+}
+
+@layer components {
+  /* Frosted-glass surface used by cards, panels and modals */
+  .glass {
+    /* Same recipe as the live site's cards: gray-900 at 30%, gray-700 border at 50% */
+    @apply rounded-xl border border-gray-700/50 bg-gray-900/30 backdrop-blur-md;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  /* Header / nav / footer bars */
+  .glass-bar {
+    @apply border-white/10 bg-black/30 backdrop-blur-md;
+  }
+}
