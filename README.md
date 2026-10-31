@@ -113,7 +113,7 @@ src/
       FileIcon.jsx          Drive type icon or thumbnail
       FilePreview.jsx       modal with Google's embedded preview + "Open in Drive"
     meta/
-      MetaConnect.jsx       paste-a-token form for the Meta Marketing API
+      MetaConnect.jsx       "Continue with Facebook" + paste-a-token fallback for the Meta Marketing API
       FolderPicker.jsx      search box over Drive folders
       RunLog.jsx            step-by-step progress of a campaign copy
     auth/
@@ -138,7 +138,7 @@ src/
     drive.js                Drive API v3: listFiles(), folderPath(), views/types/sorts, typeLabel(), fileSize(), shortDate()
     driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
     meta.js                 Meta Graph API (v24.0): accounts, campaigns, copies, chunked video upload, creative swap
-    metaAuth.js             get/set/clear the pasted Meta token (sessionStorage, or localStorage if remembered)
+    metaAuth.js             connectMeta() (Facebook login via Firebase), get/set/clear the Meta token
     campaignCopy.js         runCampaignCopy(): the whole Drive → Meta pipeline, with progress callbacks
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
@@ -197,6 +197,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | File | Exports | What it holds |
 |---|---|---|
 | `site.js` | `site` | `name` ('latest avenue'), `founder`, `supportEmail` (**placeholder: you@example.com**) |
+| `meta.js` | `metaPermissions`, `facebookConfigId` | Graph API permissions requested at Facebook login; Login for Business configuration ID |
 | `firebase.js` | `firebaseConfig`, `ownerUid` | Firebase web config and the owner's user ID (see Owner login) |
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
@@ -328,7 +329,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ### What it does
 
-1. **Connect Meta**: paste a user access token (see setup). Pick the ad account (remembered).
+1. **Connect Meta**: **Continue with Facebook** (token pulled automatically through Firebase), or paste a token as a fallback. Pick the ad account (remembered).
 2. **Template campaign**: pick a campaign; it lists the ad sets to copy and the ads. Pick the **template ad** whose text, headline, link, CTA, page/Instagram identity, URL tags and tracking will be reused.
 3. **Videos**: pick a Drive folder; every video directly inside it is listed and selected (untick to skip).
 4. **Review and create**: name the campaign (default "<template> — <folder>"), then create. The run:
@@ -347,9 +348,20 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ### One-time Meta setup
 
-1. Go to https://developers.facebook.com/apps, log in with the Facebook account that manages the ad account, **Create app**. Choose the use case for creating and managing ads with the Marketing API (app type Business if asked), name it e.g. "latest avenue tools". It can stay in **Development mode**: app admins can use every permission on their own ad accounts without Meta's App Review.
-2. Each session: open the Graph API Explorer (https://developers.facebook.com/tools/explorer/), select that app, choose **Get User Access Token**, tick `ads_management, ads_read, business_management, pages_show_list, pages_read_engagement, pages_manage_ads`, **Generate Access Token**, and paste it into step 1. It lasts about an hour.
-3. Optional, for fewer pastes: the Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/) can **Extend** the token to ~60 days. Tick "Remember on this browser" to keep it in `localStorage`. Treat that token like a password (it can create and edit ads).
+**Meta app** (https://developers.facebook.com/apps, logged in with the Facebook account that manages the ad account):
+
+1. **Create app** with the use case for creating and managing ads with the Marketing API (app type Business if asked), e.g. "latest avenue tools". It can stay in **Development mode**: app admins can use every permission on their own ad accounts without Meta's App Review.
+2. Add the **Facebook Login** product (Business apps get **Facebook Login for Business**). In its **Settings**, add this to **Valid OAuth Redirect URIs** and save: `https://latest-avenue-app.firebaseapp.com/__/auth/handler`
+3. **Facebook Login for Business only:** under **Configurations**, create one for a **User access token** with the permissions in `src/data/meta.js` (`ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads`). Put its **Configuration ID** in `facebookConfigId` in `src/data/meta.js` (not secret).
+4. **App settings → Basic**: note the **App ID** and **App secret**.
+
+**Firebase** (https://console.firebase.google.com/project/latest-avenue-app/authentication/providers):
+
+5. **Add new provider → Facebook → Enable**, paste the App ID and App secret, Save. The secret stays in Firebase; never put it in this repo.
+
+**Using it:** on `/admin/campaigns`, **Continue with Facebook**. The first time, the Facebook account is linked to the owner's Firebase user (you still sign in to the site with Google); after that it re-authenticates. Facebook's token lasts 1–2 hours; reconnecting is one click. A longer-lived token would need a server to exchange it with the app secret (e.g. a Firebase Function, which requires the paid Blaze plan).
+
+**Fallback: paste a token.** "Or paste an access token instead": generate one in the Graph API Explorer (https://developers.facebook.com/tools/explorer/) with the same permissions. Optionally **Extend** it in the Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/) to ~60 days and tick "Remember on this browser" (kept in `localStorage`; treat it like a password).
 
 ### Notes and limits
 
@@ -385,6 +397,14 @@ Content (Sam to supply):
 Features and technical:
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
 - [x] Firebase setup: project `latest-avenue-app`, Google sign-in enabled, owner = metrothenews@gmail.com
+- [ ] **Facebook login for Meta** (code done, untested; the paste-a-token fallback works meanwhile). Full steps in "Meta campaign builder → One-time Meta setup":
+  - [ ] Meta app: add the Facebook Login (or Facebook Login for Business) product
+  - [ ] Meta app: add `https://latest-avenue-app.firebaseapp.com/__/auth/handler` to Valid OAuth Redirect URIs
+  - [ ] Login for Business only: create a User access token configuration with the 6 permissions, put its ID in `facebookConfigId` (`src/data/meta.js`)
+  - [ ] Firebase: enable the Facebook provider with the Meta App ID + App secret (secret stays in Firebase)
+  - [ ] Test "Continue with Facebook" on /admin/campaigns: first click links Facebook to the owner account, later clicks re-authenticate; ad accounts should load
+  - [ ] If the popup errors, check the redirect URI, that the app is in Development mode with your account as admin, and the `config_id`
+  - [ ] Later, optional: a long-lived (~60-day) token needs a server-side exchange with the app secret (Firebase Function, paid Blaze plan)
 - [ ] **Campaign builder, next session:**
   - Re-test with the link fix. The first real run (folder "assignment 14", template "Q4 26 Song Album Name Test Playlist Follow Objective") failed every creative with "The link field is required"; the fix reads the link from `link_url` / `object_url` / feed `link_urls` and fills the CTA, but is untested against Meta. If it still fails, use "Show template ad details" on /admin/campaigns.
   - Delete the empty paused campaign "…— assignment 14" in Ads Manager, and optionally the 20 unused videos from that run in the ad account's media library.
