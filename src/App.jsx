@@ -16,6 +16,7 @@ const AdminLayout = lazy(() => import('./components/layout/AdminLayout.jsx'))
 const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
 const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
+const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
               <Route element={<AdminLayout />}>
                 <Route path="/admin" element={<Dashboard />} />
                 <Route path="/admin/drive" element={<Drive />} />
+                <Route path="/admin/campaigns" element={<Campaigns />} />
               </Route>
             </Route>
           </Route>

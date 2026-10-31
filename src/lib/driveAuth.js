@@ -8,6 +8,17 @@ export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 const KEY = 'drive-token'
 const LIFETIME_MS = 55 * 60 * 1000 // a little under Google's 60 minutes
 
+// Minutes until the stored Drive token expires (0 if none).
+export function driveTokenMinutesLeft() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(KEY))
+    if (saved?.uid === auth?.currentUser?.uid) return Math.max(0, Math.floor((saved.expiresAt - Date.now()) / 60000))
+  } catch {
+    // fall through
+  }
+  return 0
+}
+
 export function getDriveToken() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(KEY))
