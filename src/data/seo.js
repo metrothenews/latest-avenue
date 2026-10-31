@@ -9,10 +9,6 @@ const description =
 export const seo = {
   fallback: { title: site.name, description },
   '/': { title: `${site.name} | independent hip-hop label`, description },
-  '/roster': {
-    title: `Roster | ${site.name}`,
-    description: `Meet the ${site.name} roster: independent hip-hop artists building real careers, release after release.`,
-  },
   '/contact': {
     title: `Contact | ${site.name}`,
     description: `Questions about ${site.name}, a release or a deal? Get in touch.`,

@@ -5,7 +5,6 @@ import AuthLayout from './components/layout/AuthLayout.jsx'
 import ScrollToHash from './components/layout/ScrollToHash.jsx'
 import PageMeta from './components/layout/PageMeta.jsx'
 import Home from './pages/Home.jsx'
-import Roster from './pages/Roster.jsx'
 import Contact from './pages/Contact.jsx'
 import Legal from './pages/Legal.jsx'
 import NotFound from './pages/NotFound.jsx'
@@ -26,14 +25,14 @@ export default function App() {
         <Routes>
           <Route element={<SiteLayout />}>
             <Route path="/" element={<Home />} />
-            <Route path="/roster" element={<Roster />} />
-            <Route path="/case-studies" element={<Navigate to="/roster" replace />} />
+            <Route path="/roster" element={<Navigate to="/" replace />} />
+            <Route path="/case-studies" element={<Navigate to="/" replace />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/privacy" element={<Legal doc="privacy" />} />
             <Route path="/terms" element={<Legal doc="terms" />} />
             <Route path="*" element={<NotFound />} />
           </Route>
-          {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. Not linked from the site. */}
+          {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. */}
           <Route element={<AuthProvider />}>
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<Login />} />

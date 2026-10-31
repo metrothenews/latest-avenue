@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import Logo from './Logo.jsx'
 import Button from '../ui/Button.jsx'
 import { mainNav } from '../../data/navigation.js'
-import { site } from '../../data/site.js'
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -21,7 +20,7 @@ export default function Header() {
         </nav>
 
         <div className="hidden md:block">
-          <Button to={site.submitPath}>Submit a Demo</Button>
+          <Button to="/login">login</Button>
         </div>
 
         <button
@@ -42,7 +41,7 @@ export default function Header() {
               {item.label}
             </Link>
           ))}
-          <Button to={site.submitPath} className="mt-4 w-full" onClick={() => setMenuOpen(false)}>Submit a Demo</Button>
+          <Button to="/login" className="mt-4 w-full" onClick={() => setMenuOpen(false)}>login</Button>
         </nav>
       )}
     </header>
