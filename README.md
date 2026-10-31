@@ -2,7 +2,7 @@
 
 Marketing website for **latest avenue**, an independent hip-hop record label founded by **Sam Rooker**. The flagship artist is **Metro The News**.
 
-Front end only: React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeScript). There is **no backend**. The demo form can POST to a form service (Formspree etc.) once `site.demoFormEndpoint` is set; the login/signup/reset forms only validate.
+React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeScript). There is **no server of our own**. The demo form can POST to a form service (Formspree etc.) once `site.demoFormEndpoint` is set, and an **owner-only admin area** (`/login` → `/admin`) uses Firebase Google sign-in, restricted to Sam's account (see [Owner login](#owner-login)).
 
 ---
 
@@ -18,9 +18,10 @@ Front end only: React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaS
 8. [Design system](#design-system)
 9. [Components](#components)
 10. [Forms](#forms)
-11. [Conventions](#conventions)
-12. [Open TODOs](#open-todos)
-13. [Verifying changes](#verifying-changes)
+11. [Owner login](#owner-login)
+12. [Conventions](#conventions)
+13. [Open TODOs](#open-todos)
+14. [Verifying changes](#verifying-changes)
 
 ---
 
@@ -61,6 +62,7 @@ The folder is still named `Intellijend Clone`, a leftover from step 1 that is sa
 | React Router DOM | 6.30 | `BrowserRouter`, nested layout routes |
 | Vite | 5.4 | `@vitejs/plugin-react` |
 | Tailwind CSS | 3.4 | With PostCSS + Autoprefixer; config in `tailwind.config.js` |
+| Firebase | 12 | Auth only (Google sign-in) for `/login` + `/admin`; lazy-loaded, not in the public bundle |
 | Font | Inter | Loaded from Google Fonts in `index.html` |
 
 There is no test runner, linter, formatter, state library or UI kit. Styling is Tailwind utility classes plus two custom classes in `src/index.css`.
@@ -72,11 +74,13 @@ There is no test runner, linter, formatter, state library or UI kit. Styling is 
 ```
 index.html                  HTML shell: default title + meta/Open Graph tags, favicon links, Inter font
 vercel.json                 SPA rewrite for Vercel (all routes → index.html)
+firestore.rules             owner-only Firestore rules to paste into the Firebase console
 public/
   favicon.svg               "la" favicon
   apple-touch-icon.png      180×180 home-screen icon
   og-image.png              1200×630 social share image
   _redirects                SPA rewrite for Netlify
+  robots.txt                keeps /login and /admin out of search engines
 start.command               macOS double-click launcher (install + dev server + open Chrome)
 tailwind.config.js          theme: colors `ink` (#0a0a0a) and `brand` (#e5e7eb), Inter font
 src/
@@ -87,8 +91,8 @@ src/
   components/
     layout/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
-      AuthLayout.jsx        split screen: form left, artist quote slides right (login/signup)
-      CenteredLayout.jsx    logo + centered content (reset password)
+      AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
+      AdminLayout.jsx       header (logo, "admin", email, sign out) + content for /admin pages
       Header.jsx            sticky glass header, nav, "Submit a Demo" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
@@ -109,7 +113,8 @@ src/
       ArtistCard.jsx        roster card; clickable when given onClick
       ArtistModal.jsx       artist details popup
     auth/
-      AuthForm.jsx          shared login/signup form (stubbed)
+      AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
+      RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
 
   sections/home/            one file per homepage section, rendered in order by pages/Home.jsx
 
@@ -118,12 +123,14 @@ src/
     Roster.jsx              roster page
     Contact.jsx             contact page
     Legal.jsx               template for privacy + terms (driven by data/legal.js)
-    Login.jsx, Signup.jsx, ResetPassword.jsx   unlinked; kept for a possible artist portal
+    Login.jsx               owner sign-in with Google (unlinked)
+    admin/Dashboard.jsx     /admin landing page for owner-only tools
     NotFound.jsx            404
 
   data/                     ALL site copy and content (see below)
   lib/
     submitForm.js           submitForm(endpoint, data): JSON POST to a form service
+    firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
 ```
@@ -142,8 +149,9 @@ Defined in `src/App.jsx`.
 | `/contact` | Contact | SiteLayout | yes |
 | `/privacy` | Legal (`doc="privacy"`) | SiteLayout | footer |
 | `/terms` | Legal (`doc="terms"`) | SiteLayout | footer |
-| `/login`, `/signup` | AuthForm | AuthLayout | **no** |
-| `/reset-password` | ResetPassword | CenteredLayout | only from /login |
+| `/login` | Login (Google sign-in) | AuthLayout | **no** |
+| `/admin` | Dashboard (owner only) | AdminLayout | **no** |
+| `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
 Links like `/#submit` or `/#services` work from any page: `ScrollToHash` scrolls to the element with that id after navigation.
@@ -188,6 +196,7 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 | File | Exports | What it holds |
 |---|---|---|
 | `site.js` | `site` | `name` ('latest avenue'), `founder`, `supportEmail` (**placeholder: you@example.com**), `replyDays`, `submitPath` ('/#submit'), `demoFormEndpoint` (form service URL; empty = not connected) |
+| `firebase.js` | `firebaseConfig`, `ownerUid` | Firebase web config and the owner's user ID (see Owner login) |
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
 | `roster.js` | `flagship`, `artists`, `steps` | artists (see shape below); `artists[0]` is the flagship; `steps` = 3-step "how it works" on /roster |
@@ -279,17 +288,37 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 
 ## Forms
 
-Only the demo form can send data, and only once `site.demoFormEndpoint` is set. The auth forms have a `// TODO` where the backend call goes.
+Only the demo form sends data, and only once `site.demoFormEndpoint` is set.
 
 | Form | File | Validation | On submit |
 |---|---|---|---|
 | Demo submission | `sections/home/SubmitDemo.jsx` | name, artist name, valid email, link must start with http(s):// | with an endpoint: POSTs `values` + `_subject` as JSON, shows "Sending…", then thank-you or an error notice. Without one: thank-you state that says nothing was sent |
-| Login / signup | `components/auth/AuthForm.jsx` | valid email; password required (login) or 6+ chars (signup) | shows "isn't connected to a backend yet" |
-| Reset password | `pages/ResetPassword.jsx` | valid email | shows "link on its way" (states nothing was sent) |
 
 The demo form reads `?deal=single|project` from the URL to preselect the deal dropdown. The deal cards link to `/?deal=<id>#submit`.
 
 **Connecting the demo form (Formspree):** create a free account at formspree.io, make a new form, copy its endpoint (`https://formspree.io/f/xxxxxxx`) into `demoFormEndpoint` in `src/data/site.js`, then submit a test demo and confirm the email. Formspree uses the `email` field as the reply-to address. Any service that accepts a JSON POST and returns 2xx works the same way. Update the privacy policy (section 1.1 Demo Submissions) to name the service.
+
+---
+
+## Owner login
+
+`/login` signs in with Google through Firebase Auth. Only the account whose user ID matches `ownerUid` in `src/data/firebase.js` can open `/admin`; anyone else who signs in sees "this account doesn't have access". Nothing links to these pages and `robots.txt` hides them from search engines.
+
+**How secure is it?** The route guard (`RequireOwner`) only hides pages in the browser; the JavaScript for `/admin` still ships to anyone who looks for it. That's fine for UI, but **any private data must live in Firestore (or another Firebase service) behind `firestore.rules`**, which Google enforces on its servers. Never put secrets (API keys for paid services, private info) in front-end code.
+
+### One-time setup
+
+1. Go to console.firebase.google.com → **Add project** (Google Analytics not needed).
+2. **Build → Authentication → Get started → Sign-in method → Google → Enable**, pick a support email, Save.
+3. **Project settings (gear) → General → Your apps → Web (`</>`)**, register an app (no Hosting needed). Copy `apiKey`, `authDomain`, `projectId`, `appId` into `firebaseConfig` in `src/data/firebase.js`.
+4. `npm run dev`, open http://localhost:5173/login, **Continue with Google**. The page shows your user ID.
+5. Paste that ID into `ownerUid` in `src/data/firebase.js`. Reload: `/login` now takes you to `/admin`.
+6. When you add Firestore (**Build → Firestore Database → Create database**, production mode), paste `firestore.rules` into its **Rules** tab with `OWNER_UID` replaced, and Publish.
+7. After deploying, add your domain under **Authentication → Settings → Authorized domains** (localhost is there by default).
+
+### Adding an owner-only feature
+
+Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Route path="/admin/your-tool">` next to the Dashboard route (inside `RequireOwner` → `AdminLayout`). Use `useAuth()` for the user. Add a title in `data/seo.js`.
 
 ---
 
@@ -302,7 +331,7 @@ The demo form reads `?deal=single|project` from the URL to preselect the deal dr
 - **Imports use explicit extensions** (`'./Button.jsx'`).
 - **Accessibility:** real `<button>`s for actions and `<a>`/`<Link>` for navigation, labels on all inputs, `aria-expanded` / `aria-pressed` / `aria-current` where relevant, Esc closes modals.
 - **No fabricated content.** Stats, quotes and testimonials must come from Sam or the artists. Use `[bracketed]` placeholders until then.
-- **No animations or backend** unless asked.
+- **No animations or backend** unless asked. (Sam asked for Firebase auth for the owner-only area.)
 
 ---
 
@@ -320,7 +349,8 @@ Content (Sam to supply):
 
 Features and technical:
 - [ ] Create a Formspree form and paste its endpoint into `site.demoFormEndpoint` (code is ready)
-- [ ] Decide what to do with `/login`, `/signup`, `/reset-password` (artist portal, or delete)
+- [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
+- [ ] Firebase setup: create project, fill in `src/data/firebase.js`, set `ownerUid` (see Owner login)
 - [ ] Artist photos / cover art (none yet)
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
@@ -346,5 +376,6 @@ npm run dev       # then check in the browser:
 - `/roster`: clicking an artist opens the modal; Esc closes it
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
 - `/case-studies` redirects to `/roster`
+- `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Roster | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll (the comparison table scrolls inside its own box)

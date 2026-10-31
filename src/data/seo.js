@@ -19,9 +19,8 @@ export const seo = {
   },
   '/privacy': { title: `${legal.privacy.title} | ${site.name}`, description },
   '/terms': { title: `${legal.terms.title} | ${site.name}`, description },
-  '/login': { title: `Log in | ${site.name}`, description },
-  '/signup': { title: `Sign up | ${site.name}`, description },
-  '/reset-password': { title: `Reset password | ${site.name}`, description },
+  '/login': { title: `Sign in | ${site.name}`, description },
+  '/admin': { title: `Admin | ${site.name}`, description },
 }
 
 export const notFoundTitle = `Page not found | ${site.name}`
