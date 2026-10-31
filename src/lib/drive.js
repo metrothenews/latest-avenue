@@ -86,7 +86,7 @@ export const isFolder = (file) => file.mimeType === FOLDER
 export async function listVideos(token, folderId) {
   const params = new URLSearchParams({
     q: `${quote(folderId)} in parents and trashed = false and mimeType contains 'video/'`,
-    fields: 'nextPageToken,files(id,name,mimeType,size,thumbnailLink,iconLink)',
+    fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,thumbnailLink,iconLink)',
     orderBy: 'name_natural',
     pageSize: '1000',
   })
