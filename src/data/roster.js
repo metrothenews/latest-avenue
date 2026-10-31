@@ -27,9 +27,3 @@ const placeholder = (n) => ({
 
 // Everyone on the roster, flagship first.
 export const artists = [flagship, placeholder(2), placeholder(3), placeholder(4)]
-
-export const steps = [
-  { title: 'Submit your music', text: 'Send us a demo through the form. We listen to every submission.' },
-  { title: 'Plan the rollout', text: "If it's a fit, we build a release plan around your music and goals." },
-  { title: 'Drop and grow', text: 'We market, pitch and distribute every release, and report back with the numbers.' },
-]

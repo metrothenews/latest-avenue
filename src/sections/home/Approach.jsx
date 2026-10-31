@@ -1,4 +1,3 @@
-import Button from '../../components/ui/Button.jsx'
 import Eyebrow from '../../components/ui/Eyebrow.jsx'
 
 export default function Approach() {
@@ -10,7 +9,6 @@ export default function Approach() {
         <p className="mx-auto mt-4 max-w-xl text-white/70">
           Everything the big labels do for their priority artists, on a fair deal built for independent hip-hop.
         </p>
-        <Button to="/#services" variant="secondary" className="mt-8">See How It Works</Button>
       </div>
     </section>
   )

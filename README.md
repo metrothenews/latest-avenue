@@ -93,7 +93,7 @@ src/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
       AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
       AdminLayout.jsx       header (logo, "admin", email, sign out) + content for /admin pages
-      Header.jsx            sticky glass header, nav, "Submit a Demo" button, mobile menu
+      Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
       ScrollToHash.jsx      scrolls to #anchor on navigation (e.g. /#submit), else to top
@@ -109,9 +109,7 @@ src/
       Notice.jsx            inline status message box
       Placeholder.jsx       dashed "content goes here" box (currently unused, kept for mockups)
     artists/
-      FlagshipArtist.jsx    big feature card for the flagship artist (home + roster)
-      ArtistCard.jsx        roster card; clickable when given onClick
-      ArtistModal.jsx       artist details popup
+      FlagshipArtist.jsx    big feature card for the flagship artist (homepage)
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -120,7 +118,6 @@ src/
 
   pages/
     Home.jsx                lists homepage sections in order
-    Roster.jsx              roster page
     Contact.jsx             contact page
     Legal.jsx               template for privacy + terms (driven by data/legal.js)
     Login.jsx               owner sign-in with Google (unlinked)
@@ -144,17 +141,16 @@ Defined in `src/App.jsx`.
 | Path | Page | Layout | Linked from site? |
 |---|---|---|---|
 | `/` | Home | SiteLayout | yes |
-| `/roster` | Roster | SiteLayout | yes |
-| `/case-studies` | redirects to `/roster` | — | no (legacy URL) |
+| `/roster`, `/case-studies` | redirect to `/` | — | no (removed / legacy URLs) |
 | `/contact` | Contact | SiteLayout | yes |
 | `/privacy` | Legal (`doc="privacy"`) | SiteLayout | footer |
 | `/terms` | Legal (`doc="terms"`) | SiteLayout | footer |
-| `/login` | Login (Google sign-in) | AuthLayout | **no** |
+| `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
-Links like `/#submit` or `/#services` work from any page: `ScrollToHash` scrolls to the element with that id after navigation.
+Links like `/#submit` or `/#faq` work from any page: `ScrollToHash` scrolls to the element with that id after navigation.
 
 ---
 
@@ -164,20 +160,18 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 
 | # | File | id | Content | Data source |
 |---|---|---|---|---|
-| 1 | Hero.jsx | `hero` | founder pill, headline "the label of the future is here", buttons, "Home of Metro The News" | site.js, roster.js |
+| 1 | Hero.jsx | `hero` | founder pill, headline "the label of the future is here", "Submit Your Music" button, "Home of Metro The News" | site.js, roster.js |
 | 2 | Problem.jsx | `problem` | "The Independent Rapper's Trap": Control / Money / Time | label.js `traps` |
-| 3 | Approach.jsx | `approach` | "Major-label moves. Independent terms." | inline |
-| 4 | Services.jsx | `services` | 4 numbered services | label.js `services` |
-| 5 | Deals.jsx | `deals` | Single Deal + Project Deal cards → link to `/?deal=<id>#submit` | deals.js |
-| 6 | Founder.jsx | `founder` | Sam Rooker story, lessons, stats | label.js `founder` |
-| 7 | Flagship.jsx | `metro-the-news` | FlagshipArtist card | roster.js `flagship` |
-| 8 | RosterPreview.jsx | `roster` | non-flagship artists + "See the full roster" | roster.js `artists` |
-| 9 | StreamingLessons.jsx | `lessons` | 4 lesson cards | label.js `lessons` |
-| 10 | Comparison.jsx | `comparison` | "latest avenue vs. Going It Alone" table | comparison.js |
-| 11 | SubmitDemo.jsx | `submit` | demo submission form | deals.js `dealOptions` |
-| 12 | FAQ.jsx | `faq` | accordion + contact email | faq.js |
-| 13 | Platforms.jsx | `platforms` | streaming platform chips | label.js `platforms` |
-| 14 | FinalCTA.jsx | `get-started` | "Your Next Drop Starts Here" (also reused on /roster) | site.js |
+| 3 | Approach.jsx | `approach` | "Major-label moves. Independent terms." (no button) | inline |
+| 4 | Deals.jsx | `deals` | Single Deal + Project Deal cards → link to `/?deal=<id>#submit` | deals.js |
+| 5 | Founder.jsx | `founder` | Sam Rooker story, lessons, stats | label.js `founder` |
+| 6 | Flagship.jsx | `metro-the-news` | FlagshipArtist card | roster.js `flagship` |
+| 7 | StreamingLessons.jsx | `lessons` | 4 lesson cards | label.js `lessons` |
+| 8 | Comparison.jsx | `comparison` | "latest avenue vs. Going It Alone" table | comparison.js |
+| 9 | SubmitDemo.jsx | `submit` | demo submission form | deals.js `dealOptions` |
+| 10 | FAQ.jsx | `faq` | accordion + contact email | faq.js |
+| 11 | Platforms.jsx | `platforms` | streaming platform chips | label.js `platforms` |
+| 12 | FinalCTA.jsx | `get-started` | "Your Next Drop Starts Here" | site.js |
 
 ---
 
@@ -199,8 +193,8 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 | `firebase.js` | `firebaseConfig`, `ownerUid` | Firebase web config and the owner's user ID (see Owner login) |
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
-| `roster.js` | `flagship`, `artists`, `steps` | artists (see shape below); `artists[0]` is the flagship; `steps` = 3-step "how it works" on /roster |
-| `label.js` | `traps`, `services`, `founder`, `lessons`, `platforms` | homepage copy blocks |
+| `roster.js` | `flagship`, `artists` | artists (see shape below); `artists[0]` is the flagship (homepage feature card); all artists' quotes show on the /login side panel |
+| `label.js` | `traps`, `services`, `founder`, `lessons`, `platforms` | homepage copy blocks (`services` is unused since the Services section was removed; kept in case it comes back) |
 | `deals.js` | `deals`, `dealOptions` | deal cards; options for the demo form's deal dropdown |
 | `comparison.js` | `columns`, `rows` | comparison table; a row is an array of cells, or `{ highlight: true, cells }` for latest avenue's row |
 | `faq.js` | `faq` | `[{ id, question, answer }]` built from `[question, answer]` pairs |
@@ -224,7 +218,7 @@ Order is set in `src/pages/Home.jsx`. Reorder or remove sections there. The `id`
 }
 ```
 
-To add an artist, append an object to `artists`. They automatically appear in the homepage roster preview (all except the flagship), on `/roster`, and in the login/signup slides.
+To add an artist, append an object to `artists`. They appear in the /login side-panel quotes. (The /roster page and homepage roster preview were removed.)
 
 ---
 
@@ -267,7 +261,7 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 ## Components
 
 ```jsx
-<Button to="/roster">…</Button>                       // internal link (React Router)
+<Button to="/contact">…</Button>                      // internal link (React Router)
 <Button href="https://…" target="_blank" rel="noreferrer">…</Button>   // external link
 <Button onClick={fn} variant="secondary">…</Button>    // button; type="submit" also works
 
@@ -279,8 +273,6 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 
 <Modal open={bool} onClose={fn} title="…">…</Modal>
 <Accordion items={[{ id, question, answer }]} />
-<ArtistCard artist={a} onClick={setSelected} />        // omit onClick for a static card
-<ArtistModal artist={selectedOrNull} onClose={fn} />
 <FlagshipArtist artist={flagship} />
 ```
 
@@ -302,7 +294,7 @@ The demo form reads `?deal=single|project` from the URL to preselect the deal dr
 
 ## Owner login
 
-`/login` signs in with Google through Firebase Auth. Only the account whose user ID matches `ownerUid` in `src/data/firebase.js` can open `/admin`; anyone else who signs in sees "this account doesn't have access". Nothing links to these pages and `robots.txt` hides them from search engines.
+`/login` signs in with Google through Firebase Auth. Only the account whose user ID matches `ownerUid` in `src/data/firebase.js` can open `/admin`; anyone else who signs in sees "this account doesn't have access". The header's "login" button links to `/login`; `robots.txt` keeps `/login` and `/admin` out of search engines.
 
 **How secure is it?** The route guard (`RequireOwner`) only hides pages in the browser; the JavaScript for `/admin` still ships to anyone who looks for it. That's fine for UI, but **any private data must live in Firestore (or another Firebase service) behind `firestore.rules`**, which Google enforces on its servers. Never put secrets (API keys for paid services, private info) in front-end code.
 
@@ -371,11 +363,10 @@ npm run build     # must succeed with no errors
 npm run dev       # then check in the browser:
 ```
 
-- `/`: all 14 sections render; header links and `/#submit`, `/#services` scroll correctly
+- `/`: all 12 sections render; header links work, "login" goes to `/login`, and `/#submit` scrolls correctly
 - Demo form: empty submit shows errors; valid submit shows the thank-you state; `/?deal=project#submit` preselects "Project deal"
-- `/roster`: clicking an artist opens the modal; Esc closes it
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
-- `/case-studies` redirects to `/roster`
+- `/roster` and `/case-studies` redirect to `/`
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
-- Tab title changes per page (e.g. "Roster | latest avenue"); an unknown URL shows "Page not found | latest avenue"
+- Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll (the comparison table scrolls inside its own box)

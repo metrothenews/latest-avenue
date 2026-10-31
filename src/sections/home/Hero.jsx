@@ -17,7 +17,6 @@ export default function Hero() {
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Button to={site.submitPath}>Submit Your Music</Button>
-          <Button to="/roster" variant="secondary">Meet the roster</Button>
         </div>
         <p className="mx-auto mt-10 max-w-2xl text-white/60">
           {site.name} is an independent hip-hop label for artists who want real growth without giving up control.
