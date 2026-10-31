@@ -15,6 +15,7 @@ const RequireOwner = lazy(() => import('./components/auth/RequireOwner.jsx'))
 const AdminLayout = lazy(() => import('./components/layout/AdminLayout.jsx'))
 const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
+const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
             <Route element={<RequireOwner />}>
               <Route element={<AdminLayout />}>
                 <Route path="/admin" element={<Dashboard />} />
+                <Route path="/admin/drive" element={<Drive />} />
               </Route>
             </Route>
           </Route>

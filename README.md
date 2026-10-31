@@ -93,7 +93,7 @@ src/
     layout/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
       AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
-      AdminLayout.jsx       header (logo, "admin", email, sign out) + content for /admin pages
+      AdminLayout.jsx       header (logo, "admin", Dashboard/Drive nav, email, sign out) + content for /admin pages
       Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
@@ -103,11 +103,15 @@ src/
       Button.jsx            Link / <a> / <button> with variants (primary, secondary, ghost)
       Section.jsx           standard section wrapper: padding, max width, optional title/subtitle
       Eyebrow.jsx           small uppercase label above headings
-      Modal.jsx             dialog: Esc / backdrop / X to close, locks page scroll (unused; kept for admin tools)
+      Modal.jsx             dialog: Esc / backdrop / X to close, locks page scroll; `width` prop (used by Drive preview)
       TextField.jsx         input or textarea (as="textarea") with label + error message (unused; kept for admin tools)
       fieldStyles.js        fieldClass(error): shared input/select/textarea styling
       Notice.jsx            inline status message box
       Placeholder.jsx       dashed "content goes here" box (currently unused, kept for mockups)
+    drive/
+      FileResults.jsx       Drive files as a list or thumbnail grid
+      FileIcon.jsx          Drive type icon or thumbnail
+      FilePreview.jsx       modal with Google's embedded preview + "Open in Drive"
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -119,12 +123,15 @@ src/
     Contact.jsx             contact page
     Legal.jsx               template for privacy + terms (driven by data/legal.js)
     Login.jsx               owner sign-in with Google
-    admin/Dashboard.jsx     /admin landing page for owner-only tools
+    admin/Dashboard.jsx     /admin landing page: cards linking to each owner-only tool
+    admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
     NotFound.jsx            404
 
   data/                     ALL site copy and content (see below)
   lib/
     spotify.js              spotifyEmbedUrl(url): open.spotify.com link → embed URL (null if not Spotify)
+    drive.js                Drive API v3: listFiles(), folderPath(), views/types/sorts, typeLabel(), fileSize(), shortDate()
+    driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -145,6 +152,7 @@ Defined in `src/App.jsx`.
 | `/terms` | Legal (`doc="terms"`) | SiteLayout | footer |
 | `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
+| `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
@@ -291,6 +299,20 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ---
 
+## Drive browser
+
+`/admin/drive` is a read-only, searchable view of **metrothenews@gmail.com's Google Drive**.
+
+- **Connect:** the first visit shows "Connect Drive". Google's popup asks for read-only Drive access (`drive.readonly`) for the signed-in account, via Firebase's `reauthenticateWithPopup`, so picking a different Google account is rejected. The access token lasts ~1 hour and is kept in `sessionStorage` for that tab only; after it expires the page shows "Reconnect". Signing out clears it.
+- **Privacy:** requests go straight from the browser to `googleapis.com`. Nothing is stored in Firebase, and there's no server.
+- **Search:** typing searches the **whole Drive** by name and file contents (Drive's `fullText`), sorted by relevance (Drive can't sort full-text results). `/` focuses the box; Esc clears it.
+- **Views:** My Drive (folder browsing with breadcrumbs), Recent, Starred, Shared with me. **Type chips:** Folders, Docs, Sheets, Slides, PDFs, Images, Video, Audio. **Sort:** last modified or name. **Layout:** list or grid (remembered in `localStorage`).
+- **URL state:** `?view=&folder=&q=&type=&sort=` so back/forward, reloads and bookmarks keep your place.
+- **Preview:** clicking a file opens Google's embedded preview (`…/preview`) with an "Open in Drive" button. The preview uses the browser's own Google session, so it only renders if this browser is signed in to that Google account.
+- **Google Cloud setup:** the Google Drive API must be enabled on `latest-avenue-app` (https://console.cloud.google.com/apis/library/drive.googleapis.com?project=latest-avenue-app). `drive.readonly` is a "restricted" scope and the app isn't verified by Google, so the consent popup shows "Google hasn't verified this app": click **Advanced → Go to latest-avenue-app** (fine for a personal tool; verification is only needed for public apps).
+
+---
+
 ## Conventions
 
 - **Brand name is lowercase: "latest avenue".** Use `site.name` in JSX instead of hard-coding it.
@@ -338,6 +360,7 @@ npm run dev       # then check in the browser:
 - `/`: headline, "login" button and the Metro The News card render; with `spotifyUrl` set the player loads, without it the placeholder shows; both "login" buttons go to `/login`
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
 - `/roster` and `/case-studies` redirect to `/`
+- `/admin/drive` (signed in as owner): Connect Drive works; search, view tabs, type chips, sort, list/grid, folder breadcrumbs, Load more and the preview modal all work
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll
