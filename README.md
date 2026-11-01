@@ -18,9 +18,10 @@ React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeSc
 8. [Design system](#design-system)
 9. [Components](#components)
 10. [Owner login](#owner-login)
-11. [Conventions](#conventions)
-12. [Open TODOs](#open-todos)
-13. [Verifying changes](#verifying-changes)
+11. [Hosting](#hosting)
+12. [Conventions](#conventions)
+13. [Open TODOs](#open-todos)
+14. [Verifying changes](#verifying-changes)
 
 ---
 
@@ -74,13 +75,13 @@ There is no test runner, linter, formatter, state library or UI kit. Styling is 
 
 ```
 index.html                  HTML shell: default title + meta/Open Graph tags, favicon links, Inter font
-vercel.json                 SPA rewrite for Vercel (all routes → index.html)
-firestore.rules             owner-only Firestore rules to paste into the Firebase console
+firebase.json               Firebase Hosting (serves dist/, all routes → index.html, long cache on /assets) + Firestore rules path
+.firebaserc                 default Firebase project: latest-avenue-app
+firestore.rules             owner-only Firestore rules (deploy: `firebase deploy --only firestore:rules`)
 public/
   favicon.svg               "la" favicon
   apple-touch-icon.png      180×180 home-screen icon
   og-image.png              1200×630 social share image
-  _redirects                SPA rewrite for Netlify
   robots.txt                keeps /login and /admin out of search engines
 start.command               macOS double-click launcher (install + dev server + open Chrome)
 tailwind.config.js          theme: colors `ink` (#0a0a0a) and `brand` (#e5e7eb), Inter font
@@ -139,7 +140,7 @@ src/
     drive.js                Drive API v3: listFiles(), folderPath(), views/types/sorts, typeLabel(), fileSize(), shortDate()
     driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
     meta.js                 Meta Graph API (v24.0): accounts, campaigns, copies, chunked video upload, creative swap
-    metaAuth.js             connectMeta() (Facebook login via Firebase), get/set/clear the Meta token
+    metaAuth.js             startMetaLogin() / readMetaLoginRedirect() (direct Facebook login), get/set/clear the Meta token
     campaignCopy.js         uploadVideos() and finishRun(): the two stages of the Drive → Meta pipeline; runProgress()
     campaignRuns.js         Firestore: saved runs (campaignRuns) and the upload ledger (metaUploads)
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
@@ -199,7 +200,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | File | Exports | What it holds |
 |---|---|---|
 | `site.js` | `site` | `name` ('latest avenue'), `founder`, `supportEmail` (**placeholder: you@example.com**) |
-| `meta.js` | `metaPermissions`, `facebookConfigId` | Graph API permissions requested at Facebook login; Login for Business configuration ID |
+| `meta.js` | `facebookAppId`, `metaPermissions`, `facebookConfigId` | Meta app ID; Graph API permissions (used only without a configuration); Login for Business configuration ID |
 | `firebase.js` | `firebaseConfig`, `ownerUid` | Firebase web config and the owner's user ID (see Owner login) |
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
@@ -331,10 +332,10 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ### What it does
 
-1. **Connect Meta**: **Continue with Facebook** (token pulled automatically through Firebase), or paste a token as a fallback. Pick the ad account (remembered).
+1. **Connect Meta**: **Continue with Facebook** (the page goes to Facebook and comes back with a token), or paste a token as a fallback. Pick the ad account (remembered).
 2. **Template campaign**: pick a campaign; it lists the ad sets to copy and the ads. Pick the **template ad** whose text, headline, link, CTA, page/Instagram identity, URL tags and tracking will be reused.
 3. **Videos**: pick a Drive folder; every video directly inside it is listed and selected (untick to skip).
-4. **Review and start**: name the campaign (default "<template> — <folder>") and **Save run and continue**. This saves a **run** to Firestore and opens it. Runs are listed under **Saved runs** and can be continued on any device.
+4. **Review and start**: name the campaign (default "<template> — <folder>"), enter the **link for every ad** (pre-filled with the template ad's link when it has one; required, `http(s)://`), and **Save run and continue**. This saves a **run** to Firestore and opens it. Runs are listed under **Saved runs** and can be continued on any device.
 
 Each run has two stages. Progress is saved after every step, so either stage can be stopped ("Stop after current step", a closed tab, an expired login) and continued later where it left off:
 
@@ -342,9 +343,9 @@ Each run has two stages. Progress is saved after every step, so either stage can
    - first by the upload ledger (`metaUploads`, keyed by ad account + the Drive file's MD5), so a renamed or moved copy of the same file still matches; the video is checked to still exist on Meta;
    - otherwise by title, for videos uploaded before the ledger existed: exactly one video in the library with the same file name.
    Once every video is uploaded, **the device can be shut down**: Meta processes the videos on its own.
-2. **Create campaign and ads**: checks which videos Meta has finished processing (every 10 s while the page is open). For each ready video it makes a creative from the template creative with only the video and thumbnail swapped. Only after the first creative works does it copy the campaign (`/{id}/copies`, shallow, `PAUSED`, renamed) and **every** ad set (shallow, `PAUSED`, so targeting, budget, schedule, optimization and placements are identical); a template Meta rejects leaves nothing behind. Then it creates one ad per video **in each ad set**, named after the file, `PAUSED`. Ads appear as each video becomes ready. A video Meta can't process (or that was deleted from the library) goes back to "to upload".
+2. **Create campaign and ads**: checks which videos Meta has finished processing (every 10 s while the page is open). For each ready video it makes a creative from the template creative with only the video, thumbnail and destination link changed (the call-to-action's link, or every `link_urls` entry of a flexible creative). Only after the first creative works does it copy the campaign (`/{id}/copies`, shallow, `PAUSED`, renamed) and **every** ad set (shallow, `PAUSED`, so targeting, budget, schedule, optimization and placements are identical); a template Meta rejects leaves nothing behind. Then it creates one ad per video **in each ad set**, named after the file, `PAUSED`. Ads appear as each video becomes ready. A video Meta can't process (or that was deleted from the library) goes back to "to upload".
 
-A failed video, ad set or ad is shown on the run without stopping the rest, and is retried next time you continue. **Delete saved run** only removes the record; nothing on Meta is deleted.
+The run's link can be changed on the run page until the first creative is made; runs saved before the link field existed ask for it there before ads can be created. A failed video, ad set or ad is shown on the run without stopping the rest, and is retried next time you continue. **Delete saved run** only removes the record; nothing on Meta is deleted.
 
 ### Supported template ads
 
@@ -357,23 +358,15 @@ A failed video, ad set or ad is shown on the run without stopping the rest, and 
 
 **Meta app** (https://developers.facebook.com/apps, logged in with the Facebook account that manages the ad account):
 
-1. **Create app** with the use case for creating and managing ads with the Marketing API (app type Business if asked), e.g. "latest avenue tools". It can stay in **Development mode**: app admins can use every permission on their own ad accounts without Meta's App Review.
-2. Add the **Facebook Login** product (Business apps get **Facebook Login for Business**). In its **Settings**, add this to **Valid OAuth Redirect URIs** and save: `https://latest-avenue-app.firebaseapp.com/__/auth/handler`
-3. **Facebook Login for Business only:** under **Configurations**, create one for a **User access token** with the permissions in `src/data/meta.js` (`ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads`). Put its **Configuration ID** in `facebookConfigId` in `src/data/meta.js` (not secret).
-4. **App settings → Basic**: note the **App ID** and **App secret**.
+The app is `1761272091762214` (`facebookAppId`), a **Business**-type app with **Facebook Login for Business**.
 
-**Firebase** (https://console.firebase.google.com/project/latest-avenue-app/authentication/providers):
+1. **App settings → Basic → App Domains**: `latestavenue.com`, `latest-avenue-app.web.app`.
+2. **Facebook Login for Business → Configurations**: configuration `1821308708887958` (`facebookConfigId`), a **User access token** with `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads`. Change permissions there, not in code.
+3. **Facebook Login for Business → Settings → Valid OAuth Redirect URIs**: the campaign page on every domain the site runs on: `https://latestavenue.com/admin/campaigns`, `https://www.latestavenue.com/admin/campaigns`, `https://latest-avenue-app.web.app/admin/campaigns`. Localhost (`http://localhost:5173/admin/campaigns`) works while the app is in Development mode. The app can stay in **Development mode**: app admins can use every permission on their own ad accounts without Meta's App Review.
 
-5. **Add new provider → Facebook → Enable**, paste the App ID and App secret, Save. The secret stays in Firebase; never put it in this repo.
+**How the login works:** **Continue with Facebook** sends the whole page to Facebook's login with the configuration ID; Facebook returns to `/admin/campaigns` with a token in the URL, which the page stores (this tab only) and removes from the address bar. A random `state` value checks the return came from this tab. It doesn't go through Firebase: Firebase's Facebook sign-in always requests the `email` permission, which Business-type apps reject ("Invalid Scopes: email"). The Firebase Facebook provider is no longer used and can be disabled. Facebook's token lasts 1–2 hours; reconnecting is one click. A longer-lived token would need a server to exchange it with the app secret (e.g. a Firebase Function, which requires the paid Blaze plan).
 
-**Using it:** on `/admin/campaigns`, **Continue with Facebook**. The first time, the Facebook account is linked to the owner's Firebase user (you still sign in to the site with Google); after that it re-authenticates. Facebook's token lasts 1–2 hours; reconnecting is one click. A longer-lived token would need a server to exchange it with the app secret (e.g. a Firebase Function, which requires the paid Blaze plan).
-
-**Firestore** (saved runs and the upload ledger; one time):
-
-6. https://console.firebase.google.com/project/latest-avenue-app/firestore → **Create database**, production mode, any location (e.g. `nam5`).
-7. Its **Rules** tab: paste `firestore.rules` (owner only) and **Publish**. Or `firebase deploy --only firestore:rules --project latest-avenue-app`.
-
-Until then the campaign page says saved runs aren't available, and new runs can't start.
+**Firestore** (saved runs and the upload ledger): created 2026-10-31 in `nam5`, rules published. After editing `firestore.rules`, run `firebase deploy --only firestore:rules`. If Firestore can't be reached, the campaign page says saved runs aren't available and new runs can't start.
 
 **Fallback: paste a token.** "Or paste an access token instead": generate one in the Graph API Explorer (https://developers.facebook.com/tools/explorer/) with the same permissions. Optionally **Extend** it in the Access Token Debugger (https://developers.facebook.com/tools/debug/accesstoken/) to ~60 days and tick "Remember on this browser" (kept in `localStorage`; treat it like a password).
 
@@ -387,6 +380,26 @@ Until then the campaign page says saved runs aren't available, and new runs can'
 - `GRAPH_VERSION` in `src/lib/meta.js` is the Graph API version; bump it when Meta deprecates it (roughly every two years).
 
 ---
+
+## Hosting
+
+The site is on **Firebase Hosting** in the `latest-avenue-app` project (owned by metrothenews@gmail.com; samuelrooker27@gmail.com is also an Owner), at https://latestavenue.com, with `www` redirecting to it. Also reachable at https://latest-avenue-app.web.app.
+
+**Deploy** (manual; needs the Firebase CLI signed in to an account with access):
+
+```
+npm run build && firebase deploy --only hosting
+```
+
+**Domain**: registered at Squarespace (Domains → latestavenue.com → DNS). The Custom Records Firebase needs:
+
+| Type | Host | Data |
+|------|------|------|
+| A | `@` | `199.36.158.100` |
+| TXT | `@` | `hosting-site=latest-avenue-app` |
+| CNAME | `www` | `latest-avenue-app.web.app` |
+
+Keep the **Email Security** records (`v=spf1 -all` and `_dmarc`: the domain sends no email) and **Squarespace Domain Connect**; the **Squarespace Defaults** group is deleted. Firebase issues the HTTPS certificate itself once the records resolve. `latestavenue.com` and `www.latestavenue.com` are in Firebase Auth's authorized domains; the Meta app's App Domains should list `latestavenue.com` and `latest-avenue-app.firebaseapp.com` (App settings → Basic).
 
 ## Conventions
 
@@ -412,20 +425,22 @@ Content (Sam to supply):
 Features and technical:
 - [x] Owner-only Google login (`/login` → `/admin`); signup and reset-password pages removed
 - [x] Firebase setup: project `latest-avenue-app`, Google sign-in enabled, owner = metrothenews@gmail.com
-- [x] **Facebook login for Meta**: "Continue with Facebook" on /admin/campaigns works (Meta app 1761272091762214, Firebase Facebook provider enabled; tested 2026-10-31). The paste-a-token fallback stays as a backup.
+- [ ] **Facebook login for Meta**: now a direct login with configuration `1821308708887958` (Firebase's version failed with "Invalid Scopes: email" once the app became a Business app). Needs the redirect URIs above added in the Meta app, then a test. The paste-a-token fallback works meanwhile.
 - [ ] Later, optional: a long-lived (~60-day) Meta token needs a server-side exchange with the app secret (Firebase Function, paid Blaze plan)
 - [ ] **Campaign builder, next session:**
-  - Re-test with the link fix. The first real run (folder "assignment 14", template "Q4 26 Song Album Name Test Playlist Follow Objective") failed every creative with "The link field is required"; the fix reads the link from `link_url` / `object_url` / feed `link_urls` and fills the CTA, but is untested against Meta. If it still fails, use "Show template ad details" on /admin/campaigns.
+  - Re-test with the ads link field. Template ads with no link of their own failed with "The link field is required" (first on "assignment 14", again 2026-11-01 on NewStyleScript1Number1.mp4); every run now sets one link for all ads. Untested against Meta.
   - Delete the empty paused campaign "…— assignment 14" in Ads Manager, and optionally the 20 unused videos from that run in the ad account's media library.
-  - Create Firestore and publish `firestore.rules` (Meta campaign builder → Firestore), then test saved runs end to end: upload half a folder, stop, continue; finish on another device. Code untested against real Firestore and Meta (stage logic checked against fakes only).
+  - Test saved runs end to end: upload half a folder, stop, continue; finish on another device. Firestore is live; the code is untested against real Firestore and Meta (stage logic checked against fakes only).
   - The 20 videos from the "assignment 14" run should be reused by title on the next run of that folder.
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
-- [ ] Make `og:image` in `index.html` an absolute URL once the domain is known
+- [x] `og:image` in `index.html` is an absolute URL (https://latestavenue.com/og-image.png)
 - [ ] Optional: static version of the original site's topographic-line hero background
 - [ ] Rename the project folder (`package.json` is already `latest-avenue`)
 - [x] Set up git
-- [ ] Push to GitHub and deploy. Vercel or Netlify both work with Vite out of the box (build `npm run build`, output `dist`); the SPA rewrites are already in `vercel.json` and `public/_redirects`
+- [x] Hosted on Firebase Hosting (see Hosting)
+- [ ] Optional: deploy automatically on push to `main` (`firebase init hosting:github`); for now deploys are manual
+- [ ] After latestavenue.com is confirmed working, optionally remove samuelrooker27@gmail.com from the Firebase project (metrothenews@gmail.com is Owner since 2026-10-31)
 
 ---
 

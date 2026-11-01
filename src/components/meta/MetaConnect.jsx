@@ -3,25 +3,17 @@ import Button from '../ui/Button.jsx'
 import Notice from '../ui/Notice.jsx'
 import { fieldClass } from '../ui/fieldStyles.js'
 import { getMe } from '../../lib/meta.js'
-import { connectMeta, setMetaToken } from '../../lib/metaAuth.js'
+import { setMetaToken, startMetaLogin } from '../../lib/metaAuth.js'
 import { metaPermissions } from '../../data/meta.js'
 
-const POPUP_CLOSED = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request']
-const ERRORS = {
-  'auth/operation-not-allowed': 'Facebook sign-in is turned off. Enable it in Firebase → Authentication → Sign-in method.',
-  'auth/credential-already-in-use': 'That Facebook account is already linked to a different user of this site.',
-  'auth/account-exists-with-different-credential': 'That Facebook account’s email belongs to another sign-in. Use the token option below.',
-  'auth/popup-blocked': 'Your browser blocked the Facebook popup. Allow popups for this site and try again.',
-  'auth/unauthorized-domain': "This domain isn't authorized in Firebase → Authentication → Settings → Authorized domains.",
-}
-
-// Connects the Meta Marketing API: "Continue with Facebook" (token pulled automatically), or a
-// pasted Graph API Explorer token as a fallback. Calls onConnect({ token, me }) once the token works.
-export default function MetaConnect({ onConnect, expired }) {
+// Connects the Meta Marketing API: "Continue with Facebook" (leaves for Facebook and comes back with
+// a token, see lib/metaAuth.js), or a pasted Graph API Explorer token as a fallback.
+// Calls onConnect({ token, me }) once a pasted token works. loginError: why the last Facebook login failed.
+export default function MetaConnect({ onConnect, expired, loginError }) {
   const [showPaste, setShowPaste] = useState(false)
   const [token, setToken] = useState('')
   const [remember, setRemember] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(loginError ?? '')
   const [busy, setBusy] = useState(false)
 
   async function finish(value, save) {
@@ -30,17 +22,10 @@ export default function MetaConnect({ onConnect, expired }) {
     onConnect({ token: value, me })
   }
 
-  async function handleFacebook() {
+  function handleFacebook() {
     setBusy(true)
     setError('')
-    try {
-      const value = await connectMeta()
-      await finish(value, () => {})
-    } catch (err) {
-      if (!POPUP_CLOSED.includes(err.code)) setError(ERRORS[err.code] ?? `Couldn't connect to Facebook (${err.code ?? err.message}).`)
-    } finally {
-      setBusy(false)
-    }
+    startMetaLogin()
   }
 
   async function handlePaste(e) {
@@ -64,7 +49,7 @@ export default function MetaConnect({ onConnect, expired }) {
       <p className="text-sm text-white/60">
         Log in with the Facebook account that manages your ad account. Access lasts an hour or two, then you reconnect with one click.
       </p>
-      <Button onClick={handleFacebook} disabled={busy}>{busy && !showPaste ? 'Waiting for Facebook…' : 'Continue with Facebook'}</Button>
+      <Button onClick={handleFacebook} disabled={busy}>{busy && !showPaste ? 'Going to Facebook…' : 'Continue with Facebook'}</Button>
       {!showPaste && <Notice>{error}</Notice>}
 
       <button type="button" onClick={() => { setShowPaste((s) => !s); setError('') }} className="block text-sm text-white/50 hover:text-white">

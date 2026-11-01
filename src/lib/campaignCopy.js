@@ -16,7 +16,7 @@ import { findUpload, forgetUpload, recordUpload } from './campaignRuns.js'
 //    so a template Meta rejects leaves nothing behind.
 //
 // run: { id, name, accountId, campaign: { id, name }, adsets: [{ id, name, newId?, error? }],
-//        templateAdJson, campaignId?, videos: [{ driveId, name, size, md5, videoId?, reused?, creativeId?,
+//        templateAdJson, link (every ad's destination), campaignId?, videos: [{ driveId, name, size, md5, videoId?, reused?, creativeId?,
 //        adIds: { [templateAdsetId]: adId }, error? }] }
 // log(entry) receives { id, text, state: 'running' | 'done' | 'error', detail?, progress? }.
 
@@ -179,7 +179,7 @@ export async function finishRun(run, { metaToken, log, isCancelled, save }) {
       try {
         const thumbnailUrl = await step(`proc-${v.driveId}`, `${v.name} processed`, () => videoThumbnail(metaToken, v.videoId))
         v.creativeId = await step(`cr-${v.driveId}`, `Create creative for ${v.name}`, () =>
-          createCreative(metaToken, run.accountId, creativeFromTemplate(templateAd.creative, { name: baseName(v.name), videoId: v.videoId, thumbnailUrl })))
+          createCreative(metaToken, run.accountId, creativeFromTemplate(templateAd.creative, { name: baseName(v.name), videoId: v.videoId, thumbnailUrl, link: run.link })))
         v.error = null
       } catch (err) {
         if (!keepGoing(err, isCancelled)) throw err

@@ -187,18 +187,19 @@ export function templateLink(template) {
     ?? null
 }
 
-// A call-to-action that always carries the template's link (Meta rejects video ads without one).
-function withLink(cta, template) {
-  const link = templateLink(template)
+// The template's call-to-action, pointing at the ads' link (Meta rejects video ads without one).
+function withLink(cta, template, link) {
   const next = clone(cta ?? { type: template.call_to_action_type ?? 'LEARN_MORE' })
-  if (link && !next.value?.link) next.value = { ...next.value, link }
+  if (link) next.value = { ...next.value, link }
   return next
 }
 
-// The template creative with only the video (and its thumbnail) swapped.
-export function creativeFromTemplate(template, { name, videoId, thumbnailUrl }) {
+// The template creative with only the video (and its thumbnail) swapped, and every destination
+// link set to `link` (the template's own link if none is given).
+export function creativeFromTemplate(template, { name, videoId, thumbnailUrl, link: chosenLink }) {
   const params = { name, url_tags: template.url_tags, degrees_of_freedom_spec: template.degrees_of_freedom_spec }
   const spec = clone(template.object_story_spec ?? {})
+  const link = chosenLink || templateLink(template)
 
   if (template.asset_feed_spec) {
     // Flexible / dynamic creative: same texts, links and CTAs, one video.
@@ -206,8 +207,11 @@ export function creativeFromTemplate(template, { name, videoId, thumbnailUrl }) 
     feed.videos = [{ video_id: videoId, thumbnail_url: thumbnailUrl }]
     delete feed.images
     feed.ad_formats = ['SINGLE_VIDEO']
-    const link = templateLink(template)
-    if (!feed.link_urls?.length && link) feed.link_urls = [{ website_url: link }]
+    // A display URL belongs to the template's link, so it's dropped when the link changes.
+    if (link) {
+      feed.link_urls = (feed.link_urls?.length ? feed.link_urls : [{}])
+        .map(({ display_url, ...l }) => ({ ...l, website_url: link, ...(l.website_url === link && display_url && { display_url }) }))
+    }
     params.asset_feed_spec = feed
     // Keep the identity (page, Instagram account) but not the media of the template's story spec.
     const { video_data, link_data, photo_data, template_data, ...identity } = spec // eslint-disable-line no-unused-vars
@@ -219,17 +223,17 @@ export function creativeFromTemplate(template, { name, videoId, thumbnailUrl }) 
     spec.video_data.video_id = videoId
     spec.video_data.image_url = thumbnailUrl
     delete spec.video_data.image_hash
-    spec.video_data.call_to_action = withLink(spec.video_data.call_to_action, template)
+    spec.video_data.call_to_action = withLink(spec.video_data.call_to_action, template, link)
   } else {
     // Single-image template: carry its text, headline, link and CTA over to a video ad.
-    const link = spec.link_data
+    const image = spec.link_data
     spec.video_data = {
       video_id: videoId,
       image_url: thumbnailUrl,
-      message: link.message,
-      title: link.name,
-      link_description: link.description,
-      call_to_action: withLink(link.call_to_action, template),
+      message: image.message,
+      title: image.name,
+      link_description: image.description,
+      call_to_action: withLink(image.call_to_action, template, link),
     }
     delete spec.link_data
   }

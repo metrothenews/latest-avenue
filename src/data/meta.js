@@ -1,6 +1,10 @@
 // Facebook login for the Meta campaign builder (/admin/campaigns). Setup: README.md → "Meta campaign builder".
 
+// The Meta app the login goes through (App settings → Basic → App ID). Not secret.
+export const facebookAppId = '1761272091762214'
+
 // Permissions the Graph API token needs to read campaigns, upload videos and create ads.
+// With a configuration ID (below) the configuration's own list is used instead.
 export const metaPermissions = [
   'ads_management',
   'ads_read',
@@ -12,4 +16,4 @@ export const metaPermissions = [
 
 // Only for "Facebook Login for Business": the Configuration ID listing the permissions above.
 // Leave empty if the Meta app uses classic "Facebook Login" (permissions are requested directly).
-export const facebookConfigId = ''
+export const facebookConfigId = '1821308708887958'

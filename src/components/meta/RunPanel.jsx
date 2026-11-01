@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import Button from '../ui/Button.jsx'
 import Notice from '../ui/Notice.jsx'
 import RunLog from './RunLog.jsx'
+import RunLinkField from './RunLinkField.jsx'
 import { driveTokenMinutesLeft } from '../../lib/driveAuth.js'
 import { fileSize } from '../../lib/drive.js'
 import { adsManagerUrl } from '../../lib/meta.js'
@@ -77,7 +78,7 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
   }
 
   const canUpload = progress.toUpload > 0
-  const canFinish = progress.uploaded > 0 && !progress.complete
+  const canFinish = progress.uploaded > 0 && !progress.complete && Boolean(run.link)
 
   return (
     <section className="glass mt-6 p-6 md:p-8">
@@ -91,6 +92,10 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
         {run.campaignId && (
           <Button variant="secondary" href={adsManagerUrl(run.accountId, run.campaignId)} target="_blank" rel="noreferrer">Review in Ads Manager</Button>
         )}
+      </div>
+
+      <div className="mt-5">
+        <RunLinkField run={run} disabled={Boolean(running)} onSaved={(next) => { setRun(next); onChange(next) }} />
       </div>
 
       <ol className="mt-5 space-y-3 text-sm">
