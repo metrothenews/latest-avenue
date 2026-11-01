@@ -5,11 +5,13 @@ import Notice from '../../components/ui/Notice.jsx'
 import MetaConnect from '../../components/meta/MetaConnect.jsx'
 import FolderPicker from '../../components/meta/FolderPicker.jsx'
 import RunPanel from '../../components/meta/RunPanel.jsx'
+import RunLinkField from '../../components/meta/RunLinkField.jsx'
 import { fieldClass } from '../../components/ui/fieldStyles.js'
+import { isWebUrl } from '../../lib/validation.js'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { clearDriveToken, connectDrive, getDriveToken } from '../../lib/driveAuth.js'
 import { fileSize, getFile, listVideos, shortDate } from '../../lib/drive.js'
-import { clearMetaToken, getMetaToken } from '../../lib/metaAuth.js'
+import { clearMetaToken, getMetaToken, readMetaLoginRedirect } from '../../lib/metaAuth.js'
 import { getCampaignTemplate, getMe, listAdAccounts, listCampaigns, templateLink, templateProblem } from '../../lib/meta.js'
 import { runProgress } from '../../lib/campaignCopy.js'
 import { listRuns, newRunId, saveRun } from '../../lib/campaignRuns.js'
@@ -40,8 +42,9 @@ export default function Campaigns() {
   const { user } = useAuth()
   const [params] = useSearchParams()
 
-  // Meta connection
-  const [metaToken, setMetaTokenState] = useState(getMetaToken)
+  // Meta connection. Facebook login comes back to this page with a token (or an error) in the URL.
+  const [metaLogin] = useState(readMetaLoginRedirect)
+  const [metaToken, setMetaTokenState] = useState(() => metaLogin?.token ?? getMetaToken())
   const [me, setMe] = useState(null)
   const [metaExpired, setMetaExpired] = useState(false)
   const [accounts, setAccounts] = useState([])
@@ -69,6 +72,7 @@ export default function Campaigns() {
   // Runs
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
+  const [link, setLink] = useState('')
   const [running, setRunning] = useState(false) // saving a new run
   const [runs, setRuns] = useState(null)
   const [runsError, setRunsError] = useState('')
@@ -190,6 +194,11 @@ export default function Campaigns() {
     }
   }, [folder, driveToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The ads' link starts as the template ad's own link, if it has one.
+  useEffect(() => {
+    setLink(templateAd ? templateLink(templateAd.creative) ?? '' : '')
+  }, [templateAdId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Default name: "<template campaign> — <folder>", until the user edits it.
   useEffect(() => {
     if (!nameEdited && campaign && folder) setName(`${campaign.name} — ${folder.name}`)
@@ -220,7 +229,8 @@ export default function Campaigns() {
     })
   }
 
-  const ready = metaToken && account && campaign && template?.adsets.length && templateAd && !problem && folder && chosenVideos.length && name.trim()
+  const linkOk = isWebUrl(link)
+  const ready = metaToken && account && campaign && template?.adsets.length && templateAd && !problem && folder && chosenVideos.length && name.trim() && linkOk
   const adCount = (template?.adsets.length ?? 0) * chosenVideos.length
 
   // Saves the choices as a new run and opens it, ready to upload.
@@ -236,6 +246,7 @@ export default function Campaigns() {
       campaign: { id: campaign.id, name: campaign.name },
       adsets: template.adsets.map((a) => ({ id: a.id, name: a.name })),
       templateAdJson: JSON.stringify(templateAd),
+      link: link.trim(),
       folder: { id: folder.id, name: folder.name },
       videos: chosenVideos.map((v) => ({ driveId: v.id, name: v.name, size: v.size ?? null, md5: v.md5Checksum ?? null, adIds: {} })),
     }
@@ -269,7 +280,7 @@ export default function Campaigns() {
             <Button variant="secondary" onClick={() => { clearMetaToken(); setMetaTokenState(null); setMe(null); setAccounts([]) }} disabled={running}>Disconnect</Button>
           </div>
         ) : (
-          <MetaConnect expired={metaExpired} onConnect={({ token, me: m }) => { setMe(m); setMetaExpired(false); setMetaTokenState(token) }} />
+          <MetaConnect expired={metaExpired} loginError={metaLogin?.error} onConnect={({ token, me: m }) => { setMe(m); setMetaExpired(false); setMetaTokenState(token) }} />
         )}
         {metaToken && me && (
           <div className="mt-5">
@@ -310,16 +321,19 @@ export default function Campaigns() {
             {runs.map((r) => {
               const p = runProgress(r)
               return (
-                <li key={r.id}>
-                  <button type="button" onClick={() => setActiveRun(r)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-white/[0.05]">
+                <li key={r.id} className="px-4 py-3">
+                  <button type="button" onClick={() => setActiveRun(r)} className="flex w-full items-center justify-between gap-3 text-left text-sm hover:text-white">
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{r.name}</span>
                       <span className="block text-white/40">{r.accountName} · {shortDate(r.updatedAt)}</span>
                     </span>
                     <span className="shrink-0 text-white/60">
-                      {p.complete ? 'Done' : p.toUpload ? `${p.uploaded} of ${r.videos.length} uploaded` : `${p.adsMade} of ${p.adsTotal} ads`}
+                      {p.complete ? 'Done' : p.toUpload ? `${p.uploaded} of ${r.videos.length} uploaded` : `${p.adsMade} of ${p.adsTotal} ads`} →
                     </span>
                   </button>
+                  <div className="mt-3">
+                    <RunLinkField run={r} onSaved={updateRun} />
+                  </div>
                 </li>
               )
             })}
@@ -390,9 +404,7 @@ export default function Campaigns() {
                           <span className="block truncate font-medium">{a.name}</span>
                           <span className="block truncate text-white/50">{a.creative?.body || a.creative?.title || a.creative?.name}</span>
                           {why && <span className="block text-amber-200/80">{why}</span>}
-                          {!why && a.creative && (templateLink(a.creative)
-                            ? <span className="block truncate text-white/40">Link: {templateLink(a.creative)}</span>
-                            : <span className="block text-amber-200/80">No destination link found in this ad. If Meta asks for one, pick another ad or send the details below.</span>)}
+                          {!why && templateLink(a.creative) && <span className="block truncate text-white/40">Link: {templateLink(a.creative)}</span>}
                         </span>
                       </label>
                     )
@@ -461,11 +473,27 @@ export default function Campaigns() {
         <Step n={4} title="Review and start">
           <label htmlFor="campaign-name" className="mb-1.5 block text-sm text-white/70">New campaign name</label>
           <input id="campaign-name" value={name} onChange={(e) => { setName(e.target.value); setNameEdited(true) }} className={fieldClass()} disabled={running} />
+          <label htmlFor="ads-link" className="mb-1.5 mt-5 block text-sm text-white/70">Link for every ad</label>
+          <input
+            id="ads-link"
+            type="url"
+            inputMode="url"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="https://…"
+            autoComplete="off"
+            spellCheck={false}
+            className={fieldClass(link && !linkOk ? 'invalid' : '')}
+            disabled={running}
+          />
+          <p className="mt-1.5 text-sm text-white/40">
+            {link && !linkOk ? 'Enter a full address starting with https://' : 'Where every ad’s button sends people. Pre-filled from the template ad when it has one.'}
+          </p>
           <ul className="mt-5 space-y-1 text-sm text-white/70">
             <li>1 campaign copied from “{campaign.name}”, paused</li>
             <li>{template.adsets.length} ad set{template.adsets.length === 1 ? '' : 's'} copied with identical targeting, budget and schedule, paused</li>
             <li>{chosenVideos.length} video{chosenVideos.length === 1 ? '' : 's'} uploaded to {account.name}</li>
-            <li>{adCount} ad{adCount === 1 ? '' : 's'} named after each video, copying “{templateAd.name}” except the video, paused</li>
+            <li>{adCount} ad{adCount === 1 ? '' : 's'} named after each video, copying “{templateAd.name}” except the video and link, paused</li>
           </ul>
           <p className="mt-5 text-sm text-white/50">
             Next you upload the videos (videos already in this ad account are reused). Once they're uploaded you can close this page:
