@@ -1,7 +1,7 @@
 import { downloadFile } from './drive.js'
 import {
-  copyAdSet, copyCampaign, createAd, createCreative, creativeFromTemplate, isUsableVideo, listAccountVideos,
-  uploadVideo, videoStatus, videoStatuses, videoThumbnail,
+  copyAdSet, copyCampaign, createAd, createCreative, creativeFromTemplate,
+  promotedObjectFor, setAdSetConversion, uploadVideo, videoStatus, videoStatuses, videoThumbnail,
 } from './meta.js'
 import { findUpload, forgetUpload, recordUpload } from './campaignRuns.js'
 
@@ -9,14 +9,18 @@ import { findUpload, forgetUpload, recordUpload } from './campaignRuns.js'
 // (save()) after every step, so either stage can stop at any point and resume later, on any device.
 //
 // 1. uploadVideos: every Drive video → browser → the ad account's library, two at a time. A video
-//    already in that library (same file contents, or a unique video with the same title) is reused.
+//    already uploaded from the same file contents (Drive MD5, via the upload ledger) is reused. Titles
+//    are never matched: different folders often hold different videos with the same file name.
 //    Meta processes the videos on its own afterwards, so the device can then be shut down.
 // 2. finishRun: as each video finishes processing, make its creative from the template ad, then one
 //    ad per copied ad set. The campaign and ad sets are only copied once the first creative works,
-//    so a template Meta rejects leaves nothing behind.
+//    so a template Meta rejects leaves nothing behind. If the run picks a conversion event, each
+//    copied ad set that optimizes for a website conversion is switched to it before it gets ads.
 //
-// run: { id, name, accountId, campaign: { id, name }, adsets: [{ id, name, newId?, error? }],
-//        templateAdJson, link (every ad's destination), campaignId?, videos: [{ driveId, name, size, md5, videoId?, reused?, creativeId?,
+// run: { id, name, accountId, campaign: { id, name },
+//        adsets: [{ id, name, promotedObject? (the template's), newId?, conversionSet?, error? }],
+//        templateAdJson, link (every ad's destination), conversion? ({ key, type, label, id? }; none
+//        keeps each template ad set's own), campaignId?, videos: [{ driveId, name, size, md5, videoId?, reused?, creativeId?,
 //        adIds: { [templateAdsetId]: adId }, error? }] }
 // log(entry) receives { id, text, state: 'running' | 'done' | 'error', detail?, progress? }.
 
@@ -60,9 +64,15 @@ async function pool(items, size, fn) {
   if (failed) throw failed
 }
 
+// Whether a copied ad set still needs the run's conversion event set.
+const needsConversion = (run, a) => Boolean(run.conversion && a.promotedObject?.pixel_id && !a.conversionSet)
+
+// An ad set that is copied and has the run's conversion event, so it can get ads.
+export const adsetReady = (run, a) => Boolean(a.newId) && !needsConversion(run, a)
+
 // Where a run stands, for the page.
 export function runProgress(run) {
-  const copied = run.adsets.filter((a) => a.newId)
+  const copied = run.adsets.filter((a) => adsetReady(run, a))
   const adsMade = run.videos.reduce((n, v) => n + Object.keys(v.adIds ?? {}).length, 0)
   const adsTotal = run.videos.length * run.adsets.length
   return {
@@ -77,7 +87,6 @@ export function runProgress(run) {
 // Stage 1.
 export async function uploadVideos(run, { metaToken, driveToken, log, isCancelled, save }) {
   const step = stepper(log, isCancelled)
-  let library // the ad account's videos, loaded once, only if a title match is needed
 
   async function existingVideo(v) {
     const known = await findUpload(run.accountId, v)
@@ -85,9 +94,7 @@ export async function uploadVideos(run, { metaToken, driveToken, log, isCancelle
       if (!['gone', 'error'].includes(await videoStatus(metaToken, known.videoId))) return known.videoId
       await forgetUpload(run.accountId, v)
     }
-    library ??= listAccountVideos(metaToken, run.accountId)
-    const matches = (await library).filter((m) => m.title === v.name && isUsableVideo(m))
-    return matches.length === 1 ? matches[0].id : null
+    return null
   }
 
   await pool(run.videos.filter((v) => !v.videoId), UPLOAD_CONCURRENCY, async (v) => {
@@ -101,9 +108,10 @@ export async function uploadVideos(run, { metaToken, driveToken, log, isCancelle
         const blob = await step(`dl-${v.driveId}`, `Download ${v.name} from Drive`, () => downloadFile(driveToken, v.driveId))
         v.videoId = await step(`up-${v.driveId}`, `Upload ${v.name} to Meta`, (progress) => uploadVideo(metaToken, run.accountId, blob, v.name, progress))
         v.reused = false
+        // Only real uploads go in the ledger; a reused video is already there under this file.
+        await recordUpload(run.accountId, v)
       }
       v.error = null
-      await recordUpload(run.accountId, v)
     } catch (err) {
       if (!keepGoing(err, isCancelled)) throw err
       v.error = err.message
@@ -135,11 +143,24 @@ export async function finishRun(run, { metaToken, log, isCancelled, save }) {
       }
       await save()
     }
+    for (const a of run.adsets.filter((x) => x.newId && needsConversion(run, x) && !gaveUp.has(x.id))) {
+      try {
+        await step(`conv-${a.id}`, `Set conversion event of “${a.name}” to ${run.conversion.label}`, () =>
+          setAdSetConversion(metaToken, a.newId, promotedObjectFor(a.promotedObject, run.conversion)))
+        a.conversionSet = true
+        a.error = null
+      } catch (err) {
+        if (!keepGoing(err, isCancelled)) throw err
+        a.error = `Couldn't set the conversion event: ${err.message}`
+        gaveUp.add(a.id)
+      }
+      await save()
+    }
   }
 
   async function createAds(v) {
     v.adIds ??= {}
-    for (const a of run.adsets.filter((x) => x.newId && !v.adIds[x.id] && !gaveUp.has(`${v.driveId}-${x.id}`))) {
+    for (const a of run.adsets.filter((x) => adsetReady(run, x) && !v.adIds[x.id] && !gaveUp.has(`${v.driveId}-${x.id}`))) {
       try {
         v.adIds[a.id] = await step(`ad-${v.driveId}-${a.id}`, `Create ad ${baseName(v.name)} in “${a.name}”`, () =>
           createAd(metaToken, run.accountId, { name: baseName(v.name), adsetId: a.newId, creativeId: v.creativeId, templateAd }))

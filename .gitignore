@@ -5,3 +5,6 @@ dist
 # local tool state
 .claude/settings.local.json
 .firebase/
+
+# Meta token for scripts/meta.mjs (never commit)
+.secrets/

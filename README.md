@@ -18,10 +18,11 @@ React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeSc
 8. [Design system](#design-system)
 9. [Components](#components)
 10. [Owner login](#owner-login)
-11. [Hosting](#hosting)
-12. [Conventions](#conventions)
-13. [Open TODOs](#open-todos)
-14. [Verifying changes](#verifying-changes)
+11. [Meta command-line tool](#meta-command-line-tool)
+12. [Hosting](#hosting)
+13. [Conventions](#conventions)
+14. [Open TODOs](#open-todos)
+15. [Verifying changes](#verifying-changes)
 
 ---
 
@@ -116,7 +117,10 @@ src/
     meta/
       MetaConnect.jsx       "Continue with Facebook" + paste-a-token fallback for the Meta Marketing API
       FolderPicker.jsx      search box over Drive folders
-      RunPanel.jsx          one saved run: upload / create-campaign buttons, per-video status, delete
+      RunPanel.jsx          one saved run: upload / create-campaign buttons, per-video status, archive / delete
+      RunActions.jsx        archive / unarchive and delete (with confirm) for a run; Saved runs list and run page
+      RunLinkField.jsx      the run's one ads link (Saved runs list and run page); read-only once ads exist
+      RunResults.jsx        read-only results of a run's campaign: totals, ad sets, sortable ads table
       RunLog.jsx            step-by-step progress of a run
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
@@ -335,17 +339,21 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 1. **Connect Meta**: **Continue with Facebook** (the page goes to Facebook and comes back with a token), or paste a token as a fallback. Pick the ad account (remembered).
 2. **Template campaign**: pick a campaign; it lists the ad sets to copy and the ads. Pick the **template ad** whose text, headline, link, CTA, page/Instagram identity, URL tags and tracking will be reused.
 3. **Videos**: pick a Drive folder; every video directly inside it is listed and selected (untick to skip).
-4. **Review and start**: name the campaign (default "<template> — <folder>"), enter the **link for every ad** (pre-filled with the template ad's link when it has one; required, `http(s)://`), and **Save run and continue**. This saves a **run** to Firestore and opens it. Runs are listed under **Saved runs** and can be continued on any device.
+4. **Review and start**: name the campaign (default "<template> — <folder>"), enter the **link for every ad** (pre-filled with the template ad's link when it has one; required, `http(s)://`), optionally pick the **conversion event** (see below), and **Save run and continue**. This saves a **run** to Firestore and opens it. Runs are listed under **Saved runs** and can be continued on any device.
 
 Each run has two stages. Progress is saved after every step, so either stage can be stopped ("Stop after current step", a closed tab, an expired login) and continued later where it left off:
 
 1. **Upload**: each video goes Drive → browser → the ad account's video library, two at a time (chunked, retries flaky chunks). A video **already in that ad account is reused** instead of uploaded again:
-   - first by the upload ledger (`metaUploads`, keyed by ad account + the Drive file's MD5), so a renamed or moved copy of the same file still matches; the video is checked to still exist on Meta;
-   - otherwise by title, for videos uploaded before the ledger existed: exactly one video in the library with the same file name.
+   - only by the upload ledger (`metaUploads`, keyed by ad account + the Drive file's MD5), so a renamed or moved copy of the same file still matches; the video is checked to still exist on Meta;
+   - never by title: different folders often have different videos with the same file name, so a name match would put the wrong video in the ads.
    Once every video is uploaded, **the device can be shut down**: Meta processes the videos on its own.
 2. **Create campaign and ads**: checks which videos Meta has finished processing (every 10 s while the page is open). For each ready video it makes a creative from the template creative with only the video, thumbnail and destination link changed (the call-to-action's link, or every `link_urls` entry of a flexible creative). Only after the first creative works does it copy the campaign (`/{id}/copies`, shallow, `PAUSED`, renamed) and **every** ad set (shallow, `PAUSED`, so targeting, budget, schedule, optimization and placements are identical); a template Meta rejects leaves nothing behind. Then it creates one ad per video **in each ad set**, named after the file, `PAUSED`. Ads appear as each video becomes ready. A video Meta can't process (or that was deleted from the library) goes back to "to upload".
 
-The run's link can be changed on the run page until the first creative is made; runs saved before the link field existed ask for it there before ads can be created. A failed video, ad set or ad is shown on the run without stopping the rest, and is retried next time you continue. **Delete saved run** only removes the record; nothing on Meta is deleted.
+**Conversion event**: when the template's ad sets optimize for a website conversion (their `promoted_object` has a pixel), a dropdown offers *Same as template* (default) and the 8 events Feature.fm sends to a Meta pixel (`knownPixelEvents` in `src/data/meta.js`, from https://help.feature.fm/articles/360042872852). Each shows how often the template's pixel fired it in 30 days (`listPixelEvents`: the pixel's `/stats?aggregation=event`, saved in Firestore at `pixelEvents/{pixelId}` and fetched from Meta again only when over 30 days old or on **Refresh now**; `loadPixelEvents` in `campaignRuns.js`). Picking one sets `custom_event_type: OTHER` + `custom_event_str` on the template's pixel. It needs every ad set to use the same pixel. If one is picked, each copied ad set is switched to it (`POST /{adset}` with `promoted_object`, keeping the template's pixel) before it gets ads; an ad set Meta refuses gets no ads and is retried next time. Ad sets that don't optimize for a website conversion are left as they are. Stored on the run as `conversion` (`{ key, type, label, id? }`), with each ad set's template `promotedObject`; runs saved before this have no dropdown.
+
+The run's link and conversion event can be changed on the run page and in Saved runs until the first creative is made; runs saved before the link field existed ask for it there before ads can be created. **Results**: once a run's campaign exists, its page shows the campaign's status and totals (spent, results, cost per result, impressions, reach, link clicks), each ad set with its budget, and every ad in a sortable table, for today / 7 days / 30 days / lifetime (`getCampaignResults` in `lib/meta.js`, Insights API). "Results" are what each ad set optimizes for (`resultActionTypes`: the pixel event, custom conversion or goal). Totals come from Meta per level, since reach can't be summed. It only reads; turning ads on or off is done in Ads Manager.
+
+A failed video, ad set or ad is shown on the run without stopping the rest, and is retried next time you continue. Each run (in the Saved runs list and on the run page) can be **archived**, which hides it from the list (**Show archived** brings it back, and **Unarchive** restores it; stored as `archived: true` on the run), or **deleted** after a confirm, which removes the record for good. Neither touches anything on Meta, and the upload ledger is kept, so the videos are still reused by later runs.
 
 ### Supported template ads
 
@@ -380,6 +388,15 @@ The app is `1761272091762214` (`facebookAppId`), a **Business**-type app with **
 - `GRAPH_VERSION` in `src/lib/meta.js` is the Graph API version; bump it when Meta deprecates it (roughly every two years).
 
 ---
+
+## Meta command-line tool
+
+`scripts/meta.mjs` (`npm run meta -- help`) runs the site's own Meta code from the terminal, for testing and debugging the campaign builder (including by Claude Code).
+
+- **Login:** on `/admin/campaigns`, connect Meta and click **Copy token for the command-line tool**, then run `npm run meta -- login` in a terminal in this folder and paste it (hidden). It's saved to `.secrets/meta-token` (git-ignored, mode 600) and lasts 1–2 hours.
+- **Reads:** `whoami`, `accounts`, `runs` (Firestore, via the owner's `gcloud` login), `template`, `params`, `results`, and `get <path>` for any Graph API read.
+- **Checks without creating:** `creative` and `ad` ask Meta to validate (`execution_options: validate_only`) the creative / a paused ad the site would make; `--drop a.b.c` removes a field first, to find what Meta rejects.
+- **Safety:** the only write it can make is an ad creative, and only with `creative --create`. It has no code for creating campaigns, ad sets or ads or changing any status, so it can't spend money.
 
 ## Hosting
 
@@ -431,7 +448,7 @@ Features and technical:
   - Re-test with the ads link field. Template ads with no link of their own failed with "The link field is required" (first on "assignment 14", again 2026-11-01 on NewStyleScript1Number1.mp4); every run now sets one link for all ads. Untested against Meta.
   - Delete the empty paused campaign "…— assignment 14" in Ads Manager, and optionally the 20 unused videos from that run in the ad account's media library.
   - Test saved runs end to end: upload half a folder, stop, continue; finish on another device. Firestore is live; the code is untested against real Firestore and Meta (stage logic checked against fakes only).
-  - The 20 videos from the "assignment 14" run should be reused by title on the next run of that folder.
+  - The 20 videos from the "assignment 14" run were uploaded before the ledger existed, so a re-run of that folder uploads them again (title matching was removed because it reused same-named videos from other folders).
 - [x] Favicon, touch icon and social share image (`public/`)
 - [x] SEO: meta description and per-page titles (`data/seo.js`)
 - [x] `og:image` in `index.html` is an absolute URL (https://latestavenue.com/og-image.png)

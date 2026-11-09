@@ -6,6 +6,9 @@ import MetaConnect from '../../components/meta/MetaConnect.jsx'
 import FolderPicker from '../../components/meta/FolderPicker.jsx'
 import RunPanel from '../../components/meta/RunPanel.jsx'
 import RunLinkField from '../../components/meta/RunLinkField.jsx'
+import RunActions from '../../components/meta/RunActions.jsx'
+import RunConversionField from '../../components/meta/RunConversionField.jsx'
+import ConversionSelect from '../../components/meta/ConversionSelect.jsx'
 import { fieldClass } from '../../components/ui/fieldStyles.js'
 import { isWebUrl } from '../../lib/validation.js'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
@@ -73,10 +76,12 @@ export default function Campaigns() {
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
   const [link, setLink] = useState('')
+  const [conversion, setConversion] = useState(null) // null: keep each template ad set's own
   const [running, setRunning] = useState(false) // saving a new run
   const [runs, setRuns] = useState(null)
   const [runsError, setRunsError] = useState('')
   const [activeRun, setActiveRun] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState('')
 
@@ -199,6 +204,9 @@ export default function Campaigns() {
     setLink(templateAd ? templateLink(templateAd.creative) ?? '' : '')
   }, [templateAdId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A new template campaign starts with its own conversion events.
+  useEffect(() => setConversion(null), [campaign])
+
   // Default name: "<template campaign> — <folder>", until the user edits it.
   useEffect(() => {
     if (!nameEdited && campaign && folder) setName(`${campaign.name} — ${folder.name}`)
@@ -244,9 +252,10 @@ export default function Campaigns() {
       accountId,
       accountName: account.name,
       campaign: { id: campaign.id, name: campaign.name },
-      adsets: template.adsets.map((a) => ({ id: a.id, name: a.name })),
+      adsets: template.adsets.map((a) => ({ id: a.id, name: a.name, promotedObject: a.promoted_object ?? null })),
       templateAdJson: JSON.stringify(templateAd),
       link: link.trim(),
+      conversion,
       folder: { id: folder.id, name: folder.name },
       videos: chosenVideos.map((v) => ({ driveId: v.id, name: v.name, size: v.size ?? null, md5: v.md5Checksum ?? null, adIds: {} })),
     }
@@ -265,6 +274,9 @@ export default function Campaigns() {
   }
 
   const updateRun = (run) => setRuns((list) => list?.map((r) => (r.id === run.id ? JSON.parse(JSON.stringify(run)) : r)))
+  const removeRun = (id) => setRuns((list) => list?.filter((r) => r.id !== id))
+  const archivedCount = runs?.filter((r) => r.archived).length ?? 0
+  const shownRuns = runs?.filter((r) => showArchived || !r.archived) ?? []
 
   return (
     <div className="max-w-4xl">
@@ -277,7 +289,12 @@ export default function Campaigns() {
         {metaToken ? (
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
             <span className="text-white/70">{me ? <>Connected as <span className="text-white">{me.name}</span></> : 'Checking…'}</span>
-            <Button variant="secondary" onClick={() => { clearMetaToken(); setMetaTokenState(null); setMe(null); setAccounts([]) }} disabled={running}>Disconnect</Button>
+            <span className="flex flex-wrap items-center gap-4">
+              <button type="button" className="text-white/40 hover:text-white" onClick={() => navigator.clipboard?.writeText(metaToken)}>
+                Copy token for the command-line tool
+              </button>
+              <Button variant="secondary" onClick={() => { clearMetaToken(); setMetaTokenState(null); setMe(null); setAccounts([]) }} disabled={running}>Disconnect</Button>
+            </span>
           </div>
         ) : (
           <MetaConnect expired={metaExpired} loginError={metaLogin?.error} onConnect={({ token, me: m }) => { setMe(m); setMetaExpired(false); setMetaTokenState(token) }} />
@@ -308,7 +325,7 @@ export default function Campaigns() {
             driveToken={driveToken}
             onConnectDrive={handleConnectDrive}
             onChange={updateRun}
-            onDeleted={(id) => { setRuns((list) => list.filter((r) => r.id !== id)); setActiveRun(null) }}
+            onDeleted={(id) => { removeRun(id); setActiveRun(null) }}
             onAuthError={metaFailed}
           />
         </>
@@ -316,15 +333,24 @@ export default function Campaigns() {
       <>
       {runs?.length > 0 && (
         <section className="glass mt-6 p-6 md:p-8">
-          <h2 className="text-lg font-semibold">Saved runs</h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-lg font-semibold">Saved runs</h2>
+            {archivedCount > 0 && (
+              <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm text-white/50 hover:text-white">
+                {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+              </button>
+            )}
+          </div>
+          {shownRuns.length === 0 && <p className="mt-4 text-sm text-white/40">Every saved run is archived.</p>}
+          {shownRuns.length > 0 && (
           <ul className="mt-4 divide-y divide-white/5 rounded-xl border border-white/10">
-            {runs.map((r) => {
+            {shownRuns.map((r) => {
               const p = runProgress(r)
               return (
                 <li key={r.id} className="px-4 py-3">
                   <button type="button" onClick={() => setActiveRun(r)} className="flex w-full items-center justify-between gap-3 text-left text-sm hover:text-white">
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">{r.name}</span>
+                      <span className="block truncate font-medium">{r.name}{r.archived && <span className="ml-2 font-normal text-white/40">Archived</span>}</span>
                       <span className="block text-white/40">{r.accountName} · {shortDate(r.updatedAt)}</span>
                     </span>
                     <span className="shrink-0 text-white/60">
@@ -334,10 +360,17 @@ export default function Campaigns() {
                   <div className="mt-3">
                     <RunLinkField run={r} onSaved={updateRun} />
                   </div>
+                  <div className="mt-3">
+                    <RunConversionField run={r} metaToken={metaToken} onSaved={updateRun} />
+                  </div>
+                  <div className="mt-3">
+                    <RunActions run={r} onChange={updateRun} onDeleted={removeRun} />
+                  </div>
                 </li>
               )
             })}
           </ul>
+          )}
         </section>
       )}
 
@@ -489,9 +522,19 @@ export default function Campaigns() {
           <p className="mt-1.5 text-sm text-white/40">
             {link && !linkOk ? 'Enter a full address starting with https://' : 'Where every ad’s button sends people. Pre-filled from the template ad when it has one.'}
           </p>
+          {template.adsets.some((a) => a.promoted_object?.pixel_id) && (
+            <>
+              <label htmlFor="ads-conversion" className="mb-1.5 mt-5 block text-sm text-white/70">Conversion event</label>
+              <ConversionSelect id="ads-conversion" adsets={template.adsets} token={metaToken} accountId={accountId} value={conversion} onChange={setConversion} disabled={running} />
+              <p className="mt-1.5 text-sm text-white/40">What the copied ad sets optimize for and count as a result, on the template’s pixel.</p>
+            </>
+          )}
           <ul className="mt-5 space-y-1 text-sm text-white/70">
             <li>1 campaign copied from “{campaign.name}”, paused</li>
-            <li>{template.adsets.length} ad set{template.adsets.length === 1 ? '' : 's'} copied with identical targeting, budget and schedule, paused</li>
+            <li>
+              {template.adsets.length} ad set{template.adsets.length === 1 ? '' : 's'} copied with identical targeting, budget and schedule, paused
+              {conversion && `, optimizing for ${conversion.label}`}
+            </li>
             <li>{chosenVideos.length} video{chosenVideos.length === 1 ? '' : 's'} uploaded to {account.name}</li>
             <li>{adCount} ad{adCount === 1 ? '' : 's'} named after each video, copying “{templateAd.name}” except the video and link, paused</li>
           </ul>
