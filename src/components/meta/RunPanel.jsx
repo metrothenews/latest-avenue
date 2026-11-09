@@ -3,11 +3,14 @@ import Button from '../ui/Button.jsx'
 import Notice from '../ui/Notice.jsx'
 import RunLog from './RunLog.jsx'
 import RunLinkField from './RunLinkField.jsx'
+import RunConversionField from './RunConversionField.jsx'
+import RunResults from './RunResults.jsx'
+import RunActions from './RunActions.jsx'
 import { driveTokenMinutesLeft } from '../../lib/driveAuth.js'
 import { fileSize } from '../../lib/drive.js'
 import { adsManagerUrl } from '../../lib/meta.js'
-import { deleteRun, saveRun } from '../../lib/campaignRuns.js'
-import { finishRun, runProgress, uploadVideos } from '../../lib/campaignCopy.js'
+import { saveRun } from '../../lib/campaignRuns.js'
+import { adsetReady, finishRun, runProgress, uploadVideos } from '../../lib/campaignCopy.js'
 
 const MIN_DRIVE_MINUTES = 20
 
@@ -26,11 +29,10 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
   const [running, setRunning] = useState('') // 'upload' | 'finish' | ''
   const [log, setLog] = useState([])
   const [error, setError] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const cancelled = useRef(false)
 
   const progress = runProgress(run)
-  const adsetErrors = run.adsets.filter((a) => a.error && !a.newId)
+  const adsetErrors = run.adsets.filter((a) => a.error && !adsetReady(run, a))
 
   async function go(stage) {
     setError('')
@@ -68,15 +70,6 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
     }
   }
 
-  async function handleDelete() {
-    try {
-      await deleteRun(run.id)
-      onDeleted(run.id)
-    } catch (err) {
-      setError(`Couldn't delete: ${err.message}`)
-    }
-  }
-
   const canUpload = progress.toUpload > 0
   const canFinish = progress.uploaded > 0 && !progress.complete && Boolean(run.link)
 
@@ -84,7 +77,7 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
     <section className="glass mt-6 p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{run.name}</h2>
+          <h2 className="text-lg font-semibold">{run.name}{run.archived && <span className="ml-2 text-sm font-normal text-white/40">Archived</span>}</h2>
           <p className="text-sm text-white/50">
             From “{run.campaign.name}” · 📁 {run.folder.name} · {run.adsets.length} ad set{run.adsets.length === 1 ? '' : 's'}
           </p>
@@ -96,6 +89,9 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
 
       <div className="mt-5">
         <RunLinkField run={run} disabled={Boolean(running)} onSaved={(next) => { setRun(next); onChange(next) }} />
+      </div>
+      <div className="mt-4">
+        <RunConversionField run={run} metaToken={metaToken} disabled={Boolean(running)} onSaved={(next) => { setRun(next); onChange(next) }} />
       </div>
 
       <ol className="mt-5 space-y-3 text-sm">
@@ -127,8 +123,11 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
       </div>
       {running === 'finish' && <p className="mt-3 text-sm text-white/50">Meta can take a few minutes per video. Keep this page open, or stop and continue later.</p>}
       <Notice>{error}</Notice>
-      {adsetErrors.map((a) => <Notice key={a.id}>Ad set “{a.name}” couldn't be copied: {a.error}</Notice>)}
+      {adsetErrors.map((a) => <Notice key={a.id}>Ad set “{a.name}”{a.newId ? ':' : " couldn't be copied:"} {a.error}</Notice>)}
 
+      {run.campaignId && <RunResults campaignId={run.campaignId} metaToken={metaToken} onAuthError={onAuthError} />}
+
+      {run.campaignId && <h3 className="mt-8 text-lg font-semibold">Videos</h3>}
       <ul className="mt-6 max-h-96 overflow-y-auto rounded-xl border border-white/10">
         {run.videos.map((v) => {
           const s = videoState(v, run.adsets.length)
@@ -147,16 +146,8 @@ export default function RunPanel({ run: initial, metaToken, driveToken, onConnec
 
       {log.length > 0 && <div className="mt-6"><RunLog entries={log} /></div>}
 
-      <div className="mt-6 text-sm">
-        {confirmDelete ? (
-          <span className="text-white/60">
-            Delete this saved run? Nothing on Meta is deleted.{' '}
-            <button type="button" className="text-white underline" onClick={handleDelete}>Delete</button>{' · '}
-            <button type="button" className="hover:text-white" onClick={() => setConfirmDelete(false)}>Cancel</button>
-          </span>
-        ) : (
-          <button type="button" className="text-white/40 hover:text-white" onClick={() => setConfirmDelete(true)} disabled={Boolean(running)}>Delete saved run</button>
-        )}
+      <div className="mt-6">
+        <RunActions run={run} disabled={Boolean(running)} onChange={(next) => { setRun(next); onChange(next) }} onDeleted={onDeleted} />
       </div>
     </section>
   )
