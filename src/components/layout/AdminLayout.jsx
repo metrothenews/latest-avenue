@@ -7,6 +7,7 @@ const adminNav = [
   { label: 'Dashboard', to: '/admin' },
   { label: 'Drive', to: '/admin/drive' },
   { label: 'Campaigns', to: '/admin/campaigns' },
+  { label: 'Team', to: '/admin/team' },
 ]
 
 // Header + content for owner-only pages under /admin.

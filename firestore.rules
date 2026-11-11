@@ -1,12 +1,36 @@
 rules_version = '2';
 
-// Paste into Firebase console → Firestore Database → Rules, then Publish.
+// Deploy with: firebase deploy --only firestore:rules
 // The UID below is the same as ownerUid in src/data/firebase.js (metrothenews@gmail.com).
-// Only you can read or write anything; everyone else, signed in or not, is denied.
+// The owner can read and write everything. Team members (people listed in teamMembers, managed
+// at /admin/team) can only read their own membership and the team portal's content.
+// Everyone else, signed in or not, is denied.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null && request.auth.uid == 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2';
+    }
+    // On the team: signed in with a verified email that has a teamMembers document.
+    function isTeam() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/teamMembers/$(request.auth.token.email));
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2';
+      allow read, write: if isOwner();
+    }
+
+    // teamMembers/{email}: one document per person, keyed by their lowercase Google email.
+    match /teamMembers/{email} {
+      allow get: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == email;
+    }
+
+    // portal/{doc}: what the team portal shows (e.g. portal/welcome).
+    match /portal/{doc} {
+      allow get: if isTeam();
     }
   }
 }
