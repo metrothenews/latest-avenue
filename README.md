@@ -96,6 +96,7 @@ src/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
       AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
       AdminLayout.jsx       header (logo, "admin", Dashboard/Drive/Campaigns nav, email, sign out) + content for /admin pages
+      TeamLayout.jsx        header (logo, "team", email, sign out) + content for the team portal (/team)
       Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
@@ -138,6 +139,8 @@ src/
     admin/Dashboard.jsx     /admin landing page: cards linking to each owner-only tool
     admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
     admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
+    admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
+    Team.jsx                /team: team portal: Google sign-in, then the welcome page for people on the team list
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
 
@@ -150,6 +153,7 @@ src/
     metaAuth.js             startMetaLogin() / readMetaLoginRedirect() (direct Facebook login), get/set/clear the Meta token
     campaignCopy.js         uploadVideos() and finishRun(): the two stages of the Drive → Meta pipeline; runProgress()
     campaignRuns.js         Firestore: saved runs (campaignRuns) and the upload ledger (metaUploads)
+    team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -174,6 +178,8 @@ Defined in `src/App.jsx`.
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
 | `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
+| `/admin/team` | Team list and welcome message (owner only) | AdminLayout | admin header, dashboard |
+| `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
@@ -216,6 +222,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | `roster.js` | `flagship`, `artists` | artists (see shape below); `flagship.spotifyUrl` powers the homepage player; all artists' quotes show on the /login side panel |
 | `global.js` | `globalGame` | copy and settings for the /global game: rounds, guesses per round, messages and the **gift link** (`gift.url`, `gift.label`) |
 | `countries.js` | `countries`, `outlineSize` | **generated** (`npm run build:countries`): country names, centre points and SVG outlines. Do not edit by hand |
+| `team.js` | `team` | copy for the team portal's sign-in and fallback welcome text (the team list and welcome message themselves are in Firestore) |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
 ### Artist shape (`roster.js`)
@@ -332,6 +339,21 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 ### Adding an owner-only feature
 
 Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Route path="/admin/your-tool">` next to the Dashboard route (inside `RequireOwner` → `AdminLayout`). Use `useAuth()` for the user. Add a title in `data/seo.js`.
+
+---
+
+## Team portal
+
+`/team` is a portal for people who work at the label. Nothing on the public site links to it; give the address to the team. `robots.txt` keeps it out of search engines.
+
+- **Signing in:** "Continue with Google" (the same Firebase sign-in as `/login`). People on the team list see the portal; anyone else sees "this account isn't on the team list" and a sign-out button. The owner always has access.
+- **Managing it (`/admin/team`, owner only):** add a person by their **Google account email** (name and role optional), remove them with a confirm, and edit the **welcome message** (heading + text) everyone sees. Changes apply straight away, with no redeploy.
+- **What it shows now:** a welcome page only: the heading with the person's first name, their role, and the message. Until a message is saved it shows the `[bracketed]` placeholder from `data/team.js`. New sections go in `pages/Team.jsx`.
+- **Storage (Firestore):** `teamMembers/{email}` (document ID = lowercase email; fields `email`, `name`, `role`, `addedAt`) and `portal/welcome` (`heading`, `message`, `updatedAt`).
+- **Security (`firestore.rules`):** the owner can read and write everything, as before. A team member can read only their own `teamMembers` document and the `portal` documents, and can't write anything. Membership needs a Google-verified email matching a `teamMembers` document. Everyone else is denied. **The rules must be deployed for team members to get in:** `firebase deploy --only firestore:rules`. Until then only the owner can open the portal.
+- Team members can't open `/admin`: `RequireOwner` sends them to `/login`, and the rules deny them the admin data.
+- Private portal content must be stored in Firestore under `portal/` (protected by the rules), never written into the front-end code, which anyone can download.
+- `lib/team.js` and `lib/campaignRuns.js` both call `initializeFirestore` with the same settings on purpose; keep them identical or Firebase throws.
 
 ---
 
@@ -495,6 +517,8 @@ npm run dev       # then check in the browser:
 - `/global`: an outline shows; a made-up name is rejected; a wrong guess shows distance and direction; after two rounds the congratulations card shows the gift button (or the placeholder while `gift.url` is empty); "Play again" restarts. No header or footer link points to it
 - `/admin/drive` (signed in as owner): Connect Drive works; search, view tabs, type chips, sort, list/grid, folder breadcrumbs, Load more and the preview modal all work
 - `/admin/campaigns`: connect Meta, pick account → campaign → template ad → Drive folder, create; check the new paused campaign in Ads Manager
+- `/team` signed out: the sign-in card shows. Signed in as the owner: the welcome page shows. As a Google account not on the list: "isn't on the team list" and Sign out
+- `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

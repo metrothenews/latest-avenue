@@ -17,6 +17,9 @@ const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
 const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
 const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
+const AdminTeam = lazy(() => import('./pages/admin/Team.jsx'))
+const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
+const Team = lazy(() => import('./pages/Team.jsx'))
 // The hidden game loads lazily too: its country outlines are a large file.
 const Global = lazy(() => import('./pages/Global.jsx'))
 
@@ -47,7 +50,12 @@ export default function App() {
                 <Route path="/admin" element={<Dashboard />} />
                 <Route path="/admin/drive" element={<Drive />} />
                 <Route path="/admin/campaigns" element={<Campaigns />} />
+                <Route path="/admin/team" element={<AdminTeam />} />
               </Route>
+            </Route>
+            {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in pages/Team.jsx). */}
+            <Route element={<TeamLayout />}>
+              <Route path="/team" element={<Team />} />
             </Route>
           </Route>
           <Route path="/signup" element={<Navigate to="/login" replace />} />
