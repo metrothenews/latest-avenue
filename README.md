@@ -122,6 +122,8 @@ src/
       RunLinkField.jsx      the run's one ads link (Saved runs list and run page); read-only once ads exist
       RunResults.jsx        read-only results of a run's campaign: totals, ad sets, sortable ads table
       RunLog.jsx            step-by-step progress of a run
+    global/
+      Round.jsx             one round of the /global game: outline, guess box, distance + direction hints
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -136,6 +138,7 @@ src/
     admin/Dashboard.jsx     /admin landing page: cards linking to each owner-only tool
     admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
     admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
+    Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
 
   data/                     ALL site copy and content (see below)
@@ -150,6 +153,7 @@ src/
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
+    geo.js                  distanceKm(), direction(), normalizeName() for the /global game
 ```
 
 ---
@@ -165,6 +169,7 @@ Defined in `src/App.jsx`.
 | `/contact` | Contact | SiteLayout | yes |
 | `/privacy` | Legal (`doc="privacy"`) | SiteLayout | footer |
 | `/terms` | Legal (`doc="terms"`) | SiteLayout | footer |
+| `/global` | Global (outline guessing game) | SiteLayout | **no** (hidden; reached by typing the URL) |
 | `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
@@ -209,6 +214,8 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | `seo.js` | `seo`, `notFoundTitle` | per-route `{ title, description }` for the browser tab and meta tags; unknown routes get the 404 title |
 | `navigation.js` | `mainNav`, `footerNav` | header and footer links (`{ label, to }`) |
 | `roster.js` | `flagship`, `artists` | artists (see shape below); `flagship.spotifyUrl` powers the homepage player; all artists' quotes show on the /login side panel |
+| `global.js` | `globalGame` | copy and settings for the /global game: rounds, guesses per round, messages and the **gift link** (`gift.url`, `gift.label`) |
+| `countries.js` | `countries`, `outlineSize` | **generated** (`npm run build:countries`): country names, centre points and SVG outlines. Do not edit by hand |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
 ### Artist shape (`roster.js`)
@@ -230,6 +237,18 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 ```
 
 To add an artist, append an object to `artists`. They appear in the /login side-panel quotes. The bio/stat fields are currently unused (the roster page and stats card were removed).
+
+---
+
+## The /global game
+
+`/global` is a hidden page: nothing links to it, visitors reach it by typing `latestavenue.com/global`. It is an original country-outline guessing game in the site's own look (not a copy of any existing game's name or design).
+
+- Each game picks 2 random countries (`rounds` in `data/global.js`). The player sees an outline and has `maxGuesses` (6) tries. Each wrong guess shows the distance and compass direction from the guess to the answer.
+- After the last round, win or lose, the page congratulates the player and shows the **gift**: a button to `gift.url` labelled `gift.label`. **To change the offer, edit those two values in `src/data/global.js`.** While `gift.url` is empty a `[bracketed]` placeholder shows instead.
+- Nothing is saved: no backend, no cookies, no storage. Reloading starts a new game.
+- Country data comes from Natural Earth (public domain) via the `world-atlas` dev dependency. `scripts/build-countries.mjs` turns it into `src/data/countries.js`; rerun it with `npm run build:countries` only to change which countries are included. 196 countries can be guessed; the 151 larger than 20,000 km² can be the answer. Far-off territories (e.g. French Guiana) are left out of outlines.
+- The page loads lazily, so the outline file (~480 KB) is only downloaded on `/global`.
 
 ---
 
@@ -473,6 +492,7 @@ npm run dev       # then check in the browser:
 - `/`: headline, "login" button and the Metro The News card render; with `spotifyUrl` set the player loads, without it the placeholder shows; both "login" buttons go to `/login`
 - `/contact`, `/privacy`, `/terms`: render; table of contents links jump to sections
 - `/roster` and `/case-studies` redirect to `/`
+- `/global`: an outline shows; a made-up name is rejected; a wrong guess shows distance and direction; after two rounds the congratulations card shows the gift button (or the placeholder while `gift.url` is empty); "Play again" restarts. No header or footer link points to it
 - `/admin/drive` (signed in as owner): Connect Drive works; search, view tabs, type chips, sort, list/grid, folder breadcrumbs, Load more and the preview modal all work
 - `/admin/campaigns`: connect Meta, pick account → campaign → template ad → Drive folder, create; check the new paused campaign in Ads Manager
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`

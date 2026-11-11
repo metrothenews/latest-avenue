@@ -15,6 +15,10 @@ export const seo = {
   },
   '/privacy': { title: `${legal.privacy.title} | ${site.name}`, description },
   '/terms': { title: `${legal.terms.title} | ${site.name}`, description },
+  '/global': {
+    title: `global | ${site.name}`,
+    description: `Name the country from its outline. A game from ${site.name}.`,
+  },
   '/login': { title: `Sign in | ${site.name}`, description },
   '/admin': { title: `Admin | ${site.name}`, description },
   '/admin/drive': { title: `Drive | ${site.name}`, description },

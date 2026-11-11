@@ -17,6 +17,8 @@ const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
 const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
 const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
+// The hidden game loads lazily too: its country outlines are a large file.
+const Global = lazy(() => import('./pages/Global.jsx'))
 
 export default function App() {
   return (
@@ -32,6 +34,7 @@ export default function App() {
             <Route path="/contact" element={<Contact />} />
             <Route path="/privacy" element={<Legal doc="privacy" />} />
             <Route path="/terms" element={<Legal doc="terms" />} />
+            <Route path="/global" element={<Global />} />
             <Route path="*" element={<NotFound />} />
           </Route>
           {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. */}
