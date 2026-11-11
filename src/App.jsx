@@ -17,6 +17,7 @@ const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'))
 const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
 const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
+const Analytics = lazy(() => import('./pages/Analytics.jsx'))
 const AdminTeam = lazy(() => import('./pages/admin/Team.jsx'))
 const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
@@ -53,6 +54,7 @@ export default function App() {
                 <Route path="/admin/drive" element={<Drive />} />
                 <Route path="/admin/campaigns" element={<Campaigns />} />
                 <Route path="/admin/team" element={<AdminTeam />} />
+                <Route path="/analytics" element={<Analytics />} />
               </Route>
             </Route>
             {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in TeamAccess). */}

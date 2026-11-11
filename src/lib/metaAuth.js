@@ -41,13 +41,18 @@ export function clearMetaToken() {
 // Facebook's token lasts 1–2 hours; reconnecting is one click.
 const DIALOG = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`
 const STATE_KEY = 'meta-login-state'
+// Where to go after a successful login started from another page (e.g. /analytics). Facebook only
+// returns to the registered redirect URI (/admin/campaigns), which then forwards there.
+const RETURN_KEY = 'meta-login-return'
 
 // Must be listed under Valid OAuth Redirect URIs in the Meta app, for every domain the site runs on.
 export const metaRedirectUri = () => `${window.location.origin}/admin/campaigns`
 
-export function startMetaLogin() {
+export function startMetaLogin(returnTo) {
   const state = crypto.randomUUID()
   sessionStorage.setItem(STATE_KEY, state)
+  if (returnTo) sessionStorage.setItem(RETURN_KEY, returnTo)
+  else sessionStorage.removeItem(RETURN_KEY)
   const params = new URLSearchParams({ client_id: facebookAppId, redirect_uri: metaRedirectUri(), response_type: 'token', state })
   if (facebookConfigId) params.set('config_id', facebookConfigId)
   else params.set('scope', metaPermissions.join(','))
@@ -57,6 +62,18 @@ export function startMetaLogin() {
 // The result of coming back from Facebook: { token }, { error }, or null if this page load wasn't one.
 // Read once per page load (the URL is cleaned straight away), so repeat calls get the same answer.
 let redirectResult
+
+// After a successful login that another page started, go back to that page (same site only).
+function forwardAfterLogin() {
+  let returnTo = null
+  try {
+    returnTo = sessionStorage.getItem(RETURN_KEY)
+    sessionStorage.removeItem(RETURN_KEY)
+  } catch {
+    return
+  }
+  if (redirectResult?.token && returnTo?.startsWith('/') && !returnTo.startsWith('//')) window.location.replace(returnTo)
+}
 export function readMetaLoginRedirect() {
   if (redirectResult !== undefined) return redirectResult
   redirectResult = null
@@ -80,5 +97,6 @@ export function readMetaLoginRedirect() {
     setMetaToken(params.get('access_token'), false)
     redirectResult = { token: params.get('access_token') }
   }
+  forwardAfterLogin()
   return redirectResult
 }
