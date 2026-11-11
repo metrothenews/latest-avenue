@@ -126,8 +126,11 @@ src/
     global/
       Round.jsx             one round of the /global game: outline, guess box, distance + direction hints
     team/
+      Markdown.jsx          renders an assignment's Markdown in the site's style (react-markdown + GFM; no raw HTML)
       TeamAccess.jsx        layout route: sign-in and team-list check for /team pages; useTeamMember() → { email, name, role }
       Conversation.jsx      one chat: live message list + the box to write in
+    admin/
+      AssignmentsAdmin.jsx  Assignments section of /admin/team: import the backlog doc, preview, publish, assign people
     analytics/
       AreaChart.jsx         one metric per day as a smooth SVG area chart; hover, touch or arrow keys read a day
     auth/
@@ -147,6 +150,7 @@ src/
     Analytics.jsx           /analytics: Meta Ads numbers at a glance (owner only; see Analytics)
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
+    TeamAssignments.jsx     /team/assignments and /team/assignments/:id: the signed-in person's assignments (see Team assignments)
     TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
@@ -163,6 +167,7 @@ src/
     metaAnalytics.js        Meta Insights (read-only) for /analytics: getOverview(), getCampaignRows(), getCampaign()
     analyticsFormat.js      formatValue() (money / count / percent), shortDay(), longDay()
     team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
+    assignments.js          backlog doc → Markdown (Drive export, or Word via mammoth + turndown), split by heading, Firestore storage
     teamChat.js             Firestore: team messaging (chats and their messages), live updates
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
@@ -191,6 +196,7 @@ Defined in `src/App.jsx`.
 | `/analytics` | Analytics: Meta Ads at a glance (owner only) | AdminLayout | admin header, dashboard |
 | `/admin/team` | Admin: team list and welcome message (owner only) | AdminLayout | admin header and dashboard ("Admin") |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
+| `/team/assignments`, `/team/assignments/:id` | Team assignments (people on the team list) | TeamLayout | team portal header |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
@@ -399,6 +405,23 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ---
 
+## Team assignments
+
+One doc holds a **backlog of assignments**; each heading in it is one assignment. Sam imports it in the **Assignments** section of `/admin/team` and gives each assignment to people on the team. They see theirs under **Assignments** in the team portal (`/team/assignments`), rendered from Markdown.
+
+- **Importing:** paste the doc's link and press **Import from Google Doc** (later **Update from Google Doc**). It needs a Drive connection (the same read-only one as `/admin/drive`; "Connect Google Drive" appears when there isn't one). A **Google Doc** is converted by Google's own Markdown export; a **Word file (.docx) stored in Drive** (links ending `rtpof=true` are usually these) is converted in the browser (mammoth → HTML → turndown → Markdown). Other file types are refused.
+- **Splitting:** pick which heading level starts an assignment (the preview suggests the highest level used at least twice and remembers the choice). Text before the first such heading is left out; deeper headings stay inside their assignment. Images embedded in the doc travel with the assignment they're in; an assignment over ~900 KB loses its images (Firestore's 1 MiB limit) and the preview says so.
+- **Preview before publishing:** each assignment is marked New, Changed or Unchanged, and ones no longer in the doc are listed (with who they were assigned to) because **Publish deletes them**. Nothing changes until Publish.
+- **Identity:** an assignment's ID comes from its heading text (`week-1-pitch-playlists`), so re-importing keeps who it's assigned to as long as the heading stays the same. **Renaming a heading makes it a new, unassigned assignment** and deletes the old one (the preview shows both). Small punctuation changes that give the same ID are fine.
+- **Assigning:** each assignment has **Assign** (tick team members, Save) and **View**. Unassigned ones are the **backlog**: only Sam can see them.
+- **Updates are manual:** after editing the doc, press **Update from Google Doc** and Publish. There's no automatic sync (it would need a server).
+- **Storage (Firestore):** `assignments/{id}` = `{ title, markdown, order, assignees: [email], updatedAt }`; `adminSettings/assignments` = `{ url, docId, level }` (owner only).
+- **Security (`firestore.rules`):** a team member can read only assignments whose `assignees` include their email; they can't list, read, write or assign anything else. Removing someone from the team removes their access at once.
+- **In the portal:** Sam sees every assignment that's been given to someone (with who it's for); everyone else sees only their own. Links in assignments open in a new tab; raw HTML in the Markdown is not rendered.
+- `react-markdown` loads only on the assignments pages, and `mammoth`/`turndown` only when importing a Word file.
+
+---
+
 ## Drive browser
 
 `/admin/drive` is a read-only, searchable view of **metrothenews@gmail.com's Google Drive**.
@@ -563,6 +586,7 @@ npm run dev       # then check in the browser:
 - `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
 - `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/analytics` (owner): connect Meta; totals, chart and Top campaigns load; clicking a total or the dropdown changes the chart; changing the date range reloads everything; a campaign opens its own view and ‹ goes back; "Continue with Facebook" comes back to `/analytics`. At phone width the admin tabs sit on a second row that scrolls sideways
+- `/admin/team` → Assignments (owner, Drive connected): paste a doc link, Import; the preview lists one assignment per heading; Publish; Assign one to a member. That member sees it under Assignments in `/team` and can open it; another member can't (the page says it isn't assigned to them). Edit the doc, Update: the preview marks it Changed and the member sees the new text
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

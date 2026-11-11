@@ -23,6 +23,7 @@ const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const TeamMessages = lazy(() => import('./pages/TeamMessages.jsx'))
+const TeamAssignments = lazy(() => import('./pages/TeamAssignments.jsx'))
 // The hidden game loads lazily too: its country outlines are a large file.
 const Global = lazy(() => import('./pages/Global.jsx'))
 
@@ -62,6 +63,8 @@ export default function App() {
               <Route element={<TeamAccess />}>
                 <Route path="/team" element={<Team />} />
                 <Route path="/team/chat" element={<TeamMessages />} />
+                <Route path="/team/assignments" element={<TeamAssignments />} />
+                <Route path="/team/assignments/:id" element={<TeamAssignments />} />
               </Route>
             </Route>
           </Route>
