@@ -2,7 +2,7 @@
 
 Read `README.md` first. It documents the project's history, structure, data files, design system, conventions and open TODOs.
 
-**Hard rule: never break or remove existing functionality.** Every change must be additive. Do not delete, disable or rewire any feature the site has now. If a request seems to require changing or replacing an existing feature, stop and ask Sam first. After every change, confirm with `npm run build` that existing features still work.
+**Hard rule: never break or remove functionality that existed before 2026-11-10.** That baseline is the site as of commit `82cc0ff` ("Add conversion event picker, run results, archive/delete and Meta CLI"). Do not delete, disable or rewire any feature from that baseline. If a request seems to require changing or replacing one, stop and ask Sam first. Features added on or after 2026-11-10 may be changed or removed when Sam asks. After every change, confirm with `npm run build` that existing features still work.
 
 Key rules:
 - The brand name is always lowercase: "latest avenue" (use `site.name`).
