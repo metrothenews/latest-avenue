@@ -37,6 +37,13 @@ service cloud.firestore {
       allow get: if isTeam();
     }
 
+    // assignments/{key}: one assignment from the backlog doc (managed at /admin/team). A team member
+    // can read only the ones assigned to them; unassigned ones (the backlog) are owner-only.
+    // adminSettings/{doc} stays owner-only (covered by the rule above).
+    match /assignments/{key} {
+      allow read: if isTeam() && myEmail() in resource.data.assignees;
+    }
+
     // Team messaging. chats/team is the shared chat; chats/{a}|{b} is a private conversation
     // between two team members (emails in alphabetical order, also stored in `members`).
     // A chat document only holds who is in it and when the last message was sent.

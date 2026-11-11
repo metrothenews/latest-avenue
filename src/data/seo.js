@@ -26,6 +26,8 @@ export const seo = {
   '/analytics': { title: `Analytics | ${site.name}`, description },
   '/admin/team': { title: `Team admin | ${site.name}`, description },
   '/team': { title: `Team portal | ${site.name}`, description },
+  '/team/assignments': { title: `Assignments | ${site.name}`, description },
+  '/team/assignments/*': { title: `Assignment | ${site.name}`, description },
   '/team/chat': { title: `Messages | ${site.name}`, description },
 }
 

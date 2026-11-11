@@ -17,13 +17,13 @@ export default function TeamLayout() {
           <Logo />
           <span className="rounded-full border border-white/15 px-2 py-0.5 text-xs text-white/60">{team.badge}</span>
           {user && (
-            <nav className="order-last -mx-1 flex w-full gap-1 sm:order-none sm:mx-0 sm:ml-2 sm:w-auto">
+            <nav className="order-last -mx-1 flex w-full gap-1 overflow-x-auto sm:order-none sm:mx-0 sm:ml-2 sm:w-auto sm:overflow-visible">
               {nav.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  end
-                  className={({ isActive }) => `rounded-full px-3 py-1.5 text-sm ${isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
+                  end={item.to === '/team'}
+                  className={({ isActive }) => `shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:text-white'}`}
                 >
                   {item.label}
                 </NavLink>

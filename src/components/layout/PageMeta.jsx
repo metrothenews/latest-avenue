@@ -11,7 +11,8 @@ export default function PageMeta() {
   const { pathname } = useLocation()
   useEffect(() => {
     const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
-    const page = seo[path]
+    // `/x/*` entries in data/seo.js cover pages with an ID at the end, e.g. /team/assignments/<id>.
+    const page = seo[path] ?? seo[path.replace(/\/[^/]+$/, '/*')]
     const { title, description } = page ?? { ...seo.fallback, title: notFoundTitle }
     document.title = title
     setMeta('name', 'description', description)
