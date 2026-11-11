@@ -96,7 +96,7 @@ src/
       SiteLayout.jsx        Header + <Outlet/> + Footer (used by most pages)
       AuthLayout.jsx        split screen: form left, artist quote slides right (/login)
       AdminLayout.jsx       header (logo, "admin", Dashboard/Drive/Campaigns nav, email, sign out) + content for /admin pages
-      TeamLayout.jsx        header (logo, "team", email, sign out) + content for the team portal (/team)
+      TeamLayout.jsx        header (logo, "team", Home/Messages nav, email, sign out) + content for the team portal
       Header.jsx            sticky glass header, nav (Home, Contact), "login" button, mobile menu
       Footer.jsx            footer links + copyright
       Logo.jsx              text logo (site.name), links home
@@ -125,6 +125,9 @@ src/
       RunLog.jsx            step-by-step progress of a run
     global/
       Round.jsx             one round of the /global game: outline, guess box, distance + direction hints
+    team/
+      TeamAccess.jsx        layout route: sign-in and team-list check for /team pages; useTeamMember() → { email, name, role }
+      Conversation.jsx      one chat: live message list + the box to write in
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -140,7 +143,8 @@ src/
     admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
     admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
-    Team.jsx                /team: team portal: Google sign-in, then the welcome page for people on the team list
+    Team.jsx                /team: team portal home: the welcome page
+    TeamMessages.jsx        /team/messages: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
 
@@ -154,6 +158,7 @@ src/
     campaignCopy.js         uploadVideos() and finishRun(): the two stages of the Drive → Meta pipeline; runProgress()
     campaignRuns.js         Firestore: saved runs (campaignRuns) and the upload ledger (metaUploads)
     team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
+    teamChat.js             Firestore: team messaging (chats and their messages), live updates
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
     validation.js           isEmail()
@@ -180,6 +185,7 @@ Defined in `src/App.jsx`.
 | `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
 | `/admin/team` | Team list and welcome message (owner only) | AdminLayout | admin header, dashboard |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
+| `/team/messages` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
@@ -222,7 +228,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | `roster.js` | `flagship`, `artists` | artists (see shape below); `flagship.spotifyUrl` powers the homepage player; all artists' quotes show on the /login side panel |
 | `global.js` | `globalGame` | copy and settings for the /global game: rounds, guesses per round, messages and the **gift link** (`gift.url`, `gift.label`) |
 | `countries.js` | `countries`, `outlineSize` | **generated** (`npm run build:countries`): country names, centre points and SVG outlines. Do not edit by hand |
-| `team.js` | `team` | copy for the team portal's sign-in and fallback welcome text (the team list and welcome message themselves are in Firestore) |
+| `team.js` | `team` | copy for the team portal: sign-in, nav, messaging labels and fallback welcome text (the team list, welcome message and messages themselves are in Firestore) |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
 ### Artist shape (`roster.js`)
@@ -348,12 +354,27 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 - **Signing in:** "Continue with Google" (the same Firebase sign-in as `/login`). People on the team list see the portal; anyone else sees "this account isn't on the team list" and a sign-out button. The owner always has access.
 - **Managing it (`/admin/team`, owner only):** add a person by their **Google account email** (name and role optional), remove them with a confirm, and edit the **welcome message** (heading + text) everyone sees. Changes apply straight away, with no redeploy.
-- **What it shows now:** a welcome page only: the heading with the person's first name, their role, and the message. Until a message is saved it shows the `[bracketed]` placeholder from `data/team.js`. New sections go in `pages/Team.jsx`.
-- **Storage (Firestore):** `teamMembers/{email}` (document ID = lowercase email; fields `email`, `name`, `role`, `addedAt`) and `portal/welcome` (`heading`, `message`, `updatedAt`).
-- **Security (`firestore.rules`):** the owner can read and write everything, as before. A team member can read only their own `teamMembers` document and the `portal` documents, and can't write anything. Membership needs a Google-verified email matching a `teamMembers` document. Everyone else is denied. **The rules must be deployed for team members to get in:** `firebase deploy --only firestore:rules`. Until then only the owner can open the portal.
+- **What it shows now:** a welcome page (the heading with the person's first name, their role, and the message) and **Messages** (see Team messaging). Until a message is saved it shows the `[bracketed]` placeholder from `data/team.js`. To add a page, add a route inside `TeamAccess` in `App.jsx` and a link in `team.nav` (`data/team.js`).
+- **Storage (Firestore):** `teamMembers/{email}` (document ID = lowercase email; fields `email`, `name`, `role`, `addedAt`; the owner gets an entry automatically on first visit, marked `owner: true`, so the team can message them; it can't be removed at `/admin/team`) and `portal/welcome` (`heading`, `message`, `updatedAt`).
+- **Security (`firestore.rules`):** the owner can read and write everything, as before. A team member can read the team list and the `portal` documents, and use messaging (below); they can't change the team list or the portal content. Membership needs a Google-verified email matching a `teamMembers` document. Everyone else is denied. **The rules must be deployed for team members to get in:** `firebase deploy --only firestore:rules`. Until then only the owner can open the portal.
 - Team members can't open `/admin`: `RequireOwner` sends them to `/login`, and the rules deny them the admin data.
 - Private portal content must be stored in Firestore under `portal/` (protected by the rules), never written into the front-end code, which anyone can download.
 - `lib/team.js` and `lib/campaignRuns.js` both call `initializeFirestore` with the same settings on purpose; keep them identical or Firebase throws.
+
+---
+
+## Team messaging
+
+`/team/messages` (in the team portal's header) has one **team chat** everyone on the team sees, and **private one-to-one chats** between any two people on the team list. Text only for now: **attachments are not built yet** (Sam chose "messages first, files later"; storing them in Sam's Google Drive needs a server, or each sender's own Drive).
+
+- **Live:** new messages appear without reloading (Firestore listeners). Each chat shows its newest 200 messages (`SHOWN` in `lib/teamChat.js`). Messages are up to 4,000 characters; Enter sends, Shift+Enter makes a new line.
+- **Unread dot:** a white dot marks a chat with a message newer than the last time this browser had it open (kept in `localStorage`, per device). There are **no push or email notifications**: people see new messages when they open the portal. Notifications would need a server.
+- **Layout:** side by side on a wide screen; on a phone the list and the open chat are separate screens. `?chat=team` or `?chat=<email>` picks the chat, so the back button works.
+- **Storage (Firestore):** `chats/team` and `chats/{emailA}|{emailB}` (emails in alphabetical order) hold `{ members (private chats only), lastAt, lastFrom }`; messages are `chats/{id}/messages/{id}` = `{ from, text, at }`.
+- **Security (`firestore.rules`):** only people on the team list can read or send; a private chat can be read only by its two people; nobody can send as someone else, or edit or delete a message. Someone removed from the team loses all access at once; their old messages stay, labelled "former member", and private chats with them are no longer listed.
+- **The owner can read everything in the database** (the owner rule covers all of Firestore), including other people's private chats, through the Firebase console. The portal itself only shows the owner their own chats. Tell the team if that matters.
+- Messages can only be deleted in the Firebase console (Firestore → `chats`).
+- Cost: Firestore's free tier (50,000 reads and 20,000 writes a day) is far more than a small team's chat uses.
 
 ---
 
@@ -519,6 +540,7 @@ npm run dev       # then check in the browser:
 - `/admin/campaigns`: connect Meta, pick account → campaign → template ad → Drive folder, create; check the new paused campaign in Ads Manager
 - `/team` signed out: the sign-in card shows. Signed in as the owner: the welcome page shows. As a Google account not on the list: "isn't on the team list" and Sign out
 - `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
+- `/team/messages` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

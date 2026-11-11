@@ -25,6 +25,7 @@ export const seo = {
   '/admin/campaigns': { title: `New Meta campaign | ${site.name}`, description },
   '/admin/team': { title: `Team | ${site.name}`, description },
   '/team': { title: `Team portal | ${site.name}`, description },
+  '/team/messages': { title: `Messages | ${site.name}`, description },
 }
 
 export const notFoundTitle = `Page not found | ${site.name}`
