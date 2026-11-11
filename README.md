@@ -189,7 +189,7 @@ Defined in `src/App.jsx`.
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
 | `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
 | `/analytics` | Analytics: Meta Ads at a glance (owner only) | AdminLayout | admin header, dashboard |
-| `/admin/team` | Team list and welcome message (owner only) | AdminLayout | admin header, dashboard |
+| `/admin/team` | Admin: team list and welcome message (owner only) | AdminLayout | admin header and dashboard ("Admin") |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
@@ -363,7 +363,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 - **Totals:** amount spent, impressions, reach, link clicks, CTR (link clicks ÷ impressions), CPC (spend ÷ link clicks) and CPM. Clicking a total charts it. Totals come from Meta for the whole period, because reach can't be added up across days.
 - **Chart:** one metric per day (`?metric=` in the URL). Days with no delivery show as 0. Hover, tap or focus it and use the arrow keys to read a day; "Show as a table" lists every day. No chart library and no animation: `components/analytics/AreaChart.jsx` draws SVG (monotone curve, so it never dips below 0 or overshoots a real value).
 - **Top campaigns:** every campaign that delivered in the period, sorted by the charted metric (costs: lowest first; campaigns without a value last). Clicking one opens `?campaign=<id>`: the same totals and chart for that campaign, and a link to it in Ads Manager.
-- **Meta connection:** the same token as `/admin/campaigns` (this tab, or remembered). "Continue with Facebook" returns to `/admin/campaigns` (the only registered redirect URI), which forwards straight back to `/analytics` (`startMetaLogin(returnTo)` in `lib/metaAuth.js`). An expired token shows the connect box again.
+- **Meta connection:** a "Connect Meta" card at the top, the same as step 1 of `/admin/campaigns`: "Continue with Facebook" or a pasted token when not connected, "Connected as …" and **Disconnect** when connected. It is the same token as `/admin/campaigns` (this tab, or remembered), so connecting on one page connects the other. Facebook returns to `/admin/campaigns` (the only registered redirect URI), which forwards straight back to `/analytics`, with the error if the login failed or was cancelled (`startMetaLogin(returnTo)` and `takeMetaLoginError()` in `lib/metaAuth.js`). An expired token shows the connect options again.
 - Read-only: it never changes anything on Meta. Money is in the ad account's currency.
 
 ---
@@ -373,6 +373,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 `/team` is a portal for people who work at the label. Nothing on the public site links to it; give the address to the team. `robots.txt` keeps it out of search engines.
 
 - **Signing in:** "Continue with Google" (the same Firebase sign-in as `/login`). People on the team list see the portal; anyone else sees "this account isn't on the team list" and a sign-out button. The owner always has access.
+- **Naming:** "Team" always means the portal itself (`/team`); "Admin" means the page that manages it (`/admin/team`). The admin header and the dashboard each have both, and the page's heading is "Admin".
 - **Managing it (`/admin/team`, owner only):** add a person by their **Google account email** (name and role optional), remove them with a confirm, and edit the **welcome message** (heading + text) everyone sees. Changes apply straight away, with no redeploy.
 - **What it shows now:** a welcome page (the heading with the person's first name, their role, and the message) and **Messages** (see Team messaging). Until a message is saved it shows the `[bracketed]` placeholder from `data/team.js`. To add a page, add a route inside `TeamAccess` in `App.jsx` and a link in `team.nav` (`data/team.js`).
 - **Storage (Firestore):** `teamMembers/{email}` (document ID = lowercase email; fields `email`, `name`, `role`, `addedAt`; the owner gets an entry automatically on first visit, marked `owner: true`, so the team can message them; it can't be removed at `/admin/team`) and `portal/welcome` (`heading`, `message`, `updatedAt`).
