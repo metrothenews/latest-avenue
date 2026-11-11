@@ -34,4 +34,32 @@ body::before {
   .glass-bar {
     @apply border-white/10 bg-black/30 backdrop-blur-md;
   }
+
+  /* A doc shown on /team/assignments (components/team/DocContent.jsx). Its HTML is injected,
+     so it can't carry Tailwind classes: the doc's own tags are styled here. */
+  .doc-content {
+    @apply break-words text-base leading-relaxed text-white/85;
+  }
+  .doc-content p { @apply mt-2 min-h-[1.625em]; } /* an empty paragraph is a blank line, as in the doc */
+  .doc-content > :first-child { @apply mt-0; }
+  .doc-content strong, .doc-content b { @apply font-bold text-white; }
+  .doc-content h1 { @apply mt-8 text-3xl font-extrabold tracking-tight text-white; }
+  .doc-content h2 { @apply mt-8 text-2xl font-bold tracking-tight text-white; }
+  .doc-content h3 { @apply mt-6 text-xl font-semibold text-white; }
+  .doc-content h4, .doc-content h5, .doc-content h6 { @apply mt-6 font-semibold text-white; }
+  .doc-content a { @apply break-all text-white underline decoration-white/40 hover:decoration-white; }
+  .doc-content ul { @apply mt-2 list-disc pl-6; }
+  .doc-content ol { @apply mt-2 list-decimal pl-6; }
+  .doc-content li { @apply mt-1 pl-1; }
+  .doc-content [data-level='1'] { @apply ml-6; }
+  .doc-content [data-level='2'] { @apply ml-12; }
+  .doc-content [data-level='3'], .doc-content [data-level='4'], .doc-content [data-level='5'] { @apply ml-[4.5rem]; }
+  .doc-content [data-align='center'] { @apply text-center; }
+  .doc-content [data-align='right'] { @apply text-right; }
+  .doc-content hr { @apply my-8 border-white/10; }
+  .doc-content img { @apply my-2 inline-block max-w-full rounded-lg; }
+  .doc-content table { @apply mt-4 block w-full border-collapse overflow-x-auto text-sm; }
+  .doc-content td, .doc-content th { @apply border border-white/15 px-3 py-2 align-top; }
+  .doc-content th { @apply bg-white/5 font-semibold; }
+  .doc-content td > p:first-child, .doc-content th > p:first-child, .doc-content li > p:first-child { @apply mt-0; }
 }

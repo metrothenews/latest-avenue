@@ -20,12 +20,9 @@ export const team = {
   adminLink: { label: 'Admin', to: '/admin' },
   assignments: {
     title: 'Assignments',
-    none: "Nothing has been assigned to you yet.",
-    ownerNote: 'You see every assignment that has been given to someone. Each person sees only their own.',
-    back: 'All assignments',
+    none: 'No assignments have been posted yet.',
     updated: 'Updated',
-    notFound: "This assignment doesn't exist, or it isn't assigned to you.",
-    emptyBody: 'This assignment has no text under its heading.',
+    emptyDoc: 'The assignments doc is empty.',
     loadFailed: "Couldn't load assignments. Check your connection and reload.",
   },
   messages: {
