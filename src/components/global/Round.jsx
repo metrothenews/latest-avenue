@@ -61,7 +61,7 @@ export default function Round({ target, doneLabel, onDone }) {
               autoComplete="off"
               aria-invalid={Boolean(error)}
               aria-describedby={error ? 'guess-error' : undefined}
-              className={fieldClass(error)}
+              className={`${fieldClass(error)} !text-base`}
             />
             <Button type="submit">Guess</Button>
           </div>
