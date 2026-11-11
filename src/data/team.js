@@ -13,8 +13,10 @@ export const team = {
   defaultHeading: 'Welcome',
   nav: [
     { label: 'Home', to: '/team' },
-    { label: 'Messages', to: '/team/messages' },
+    { label: 'Messages', to: '/team/chat' },
   ],
+  // Shown only to the owner, in the portal header, to get back to the admin area.
+  adminLink: { label: 'Admin', to: '/admin' },
   messages: {
     title: 'Messages',
     teamChat: 'Team chat',
@@ -29,5 +31,5 @@ export const team = {
     sendFailed: "Couldn't send. Check your connection and try again.",
     formerMember: 'former member',
   },
-  defaultMessage: '[Welcome message goes here. Edit it in Admin → Team.]',
+  defaultMessage: '[Welcome message goes here. Edit it at /admin/team.]',
 }

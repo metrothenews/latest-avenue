@@ -59,10 +59,11 @@ export default function App() {
             <Route element={<TeamLayout />}>
               <Route element={<TeamAccess />}>
                 <Route path="/team" element={<Team />} />
-                <Route path="/team/messages" element={<TeamMessages />} />
+                <Route path="/team/chat" element={<TeamMessages />} />
               </Route>
             </Route>
           </Route>
+          <Route path="/team/messages" element={<Navigate to="/team/chat" replace />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/reset-password" element={<Navigate to="/login" replace />} />
         </Routes>

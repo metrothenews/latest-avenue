@@ -7,7 +7,9 @@ import { team } from '../../data/team.js'
 // Header + content for the team portal (/team and its pages). TeamAccess decides who gets in.
 // On a phone the nav drops to a second row under the logo.
 export default function TeamLayout() {
-  const { user, signOut } = useAuth()
+  const { user, isOwner, signOut } = useAuth()
+  // The owner also gets a link back to the admin area; team members see only team.nav.
+  const nav = isOwner ? [...team.nav, team.adminLink] : team.nav
   return (
     <div className="flex min-h-screen flex-col">
       <header className="glass-bar sticky top-0 z-50 border-b">
@@ -16,7 +18,7 @@ export default function TeamLayout() {
           <span className="rounded-full border border-white/15 px-2 py-0.5 text-xs text-white/60">{team.badge}</span>
           {user && (
             <nav className="order-last -mx-1 flex w-full gap-1 sm:order-none sm:mx-0 sm:ml-2 sm:w-auto">
-              {team.nav.map((item) => (
+              {nav.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

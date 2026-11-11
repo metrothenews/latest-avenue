@@ -17,7 +17,7 @@ function loadRead() {
   }
 }
 
-// /team/messages: the team chat and private one-to-one chats. `?chat=team` or `?chat=<email>` picks one.
+// /team/chat: the team chat and private one-to-one chats. `?chat=team` or `?chat=<email>` picks one.
 // On a phone the list and the open chat are separate screens; on a wider screen they sit side by side.
 export default function TeamMessages() {
   const me = useTeamMember().email
@@ -62,7 +62,7 @@ export default function TeamMessages() {
     return (
       <li key={id}>
         <Link
-          to={`/team/messages?chat=${encodeURIComponent(target)}`}
+          to={`/team/chat?chat=${encodeURIComponent(target)}`}
           aria-current={active ? 'page' : undefined}
           className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 ${active ? 'md:bg-white/10' : ''} hover:bg-white/5`}
         >
@@ -89,7 +89,7 @@ export default function TeamMessages() {
 
         <section className={`glass h-[calc(100dvh-13rem)] flex-col md:flex md:h-[calc(100dvh-16rem)] ${picked ? 'flex' : 'hidden'}`}>
           <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3 md:px-6">
-            <Link to="/team/messages" className="text-sm text-white/60 hover:text-white md:hidden" aria-label={copy.back}>←</Link>
+            <Link to="/team/chat" className="text-sm text-white/60 hover:text-white md:hidden" aria-label={copy.back}>←</Link>
             <h2 className="truncate font-semibold">{to ? nameOf(to) : copy.teamChat}</h2>
           </header>
           <Conversation key={chatId} chatId={chatId} to={to} me={me} started={Boolean(chats[chatId])} nameOf={nameOf} onSeen={markSeen} />

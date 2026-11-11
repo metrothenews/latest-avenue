@@ -144,7 +144,7 @@ src/
     admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
-    TeamMessages.jsx        /team/messages: team chat + private one-to-one chats (see Team messaging)
+    TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
 
@@ -185,7 +185,7 @@ Defined in `src/App.jsx`.
 | `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
 | `/admin/team` | Team list and welcome message (owner only) | AdminLayout | admin header, dashboard |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
-| `/team/messages` | Team messaging (people on the team list) | TeamLayout | team portal header |
+| `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
 
@@ -365,7 +365,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ## Team messaging
 
-`/team/messages` (in the team portal's header) has one **team chat** everyone on the team sees, and **private one-to-one chats** between any two people on the team list. Text only for now: **attachments are not built yet** (Sam chose "messages first, files later"; storing them in Sam's Google Drive needs a server, or each sender's own Drive).
+`/team/chat` (in the team portal's header) has one **team chat** everyone on the team sees, and **private one-to-one chats** between any two people on the team list. Text only for now: **attachments are not built yet** (Sam chose "messages first, files later"; storing them in Sam's Google Drive needs a server, or each sender's own Drive).
 
 - **Live:** new messages appear without reloading (Firestore listeners). Each chat shows its newest 200 messages (`SHOWN` in `lib/teamChat.js`). Messages are up to 4,000 characters; Enter sends, Shift+Enter makes a new line.
 - **Unread dot:** a white dot marks a chat with a message newer than the last time this browser had it open (kept in `localStorage`, per device). There are **no push or email notifications**: people see new messages when they open the portal. Notifications would need a server.
@@ -540,7 +540,7 @@ npm run dev       # then check in the browser:
 - `/admin/campaigns`: connect Meta, pick account → campaign → template ad → Drive folder, create; check the new paused campaign in Ads Manager
 - `/team` signed out: the sign-in card shows. Signed in as the owner: the welcome page shows. As a Google account not on the list: "isn't on the team list" and Sign out
 - `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
-- `/team/messages` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
+- `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll
