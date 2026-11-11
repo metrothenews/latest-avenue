@@ -9,7 +9,7 @@ import { team as copy } from '../../data/team.js'
 
 const emptyMember = { email: '', name: '', role: '' }
 
-// /admin/team: who may open the team portal (/team), and the welcome message they see.
+// /admin/team ("Admin" in the header and on the dashboard): who may open the team portal (/team), and the welcome message they see.
 export default function Team() {
   const [members, setMembers] = useState(null) // null while loading
   const [loadError, setLoadError] = useState('')
@@ -72,7 +72,7 @@ export default function Team() {
 
   return (
     <div>
-      <h1 className="text-4xl font-extrabold tracking-tight">Team</h1>
+      <h1 className="text-4xl font-extrabold tracking-tight">Admin</h1>
       <p className="mt-3 max-w-2xl text-white/60">
         People listed here can sign in to the team portal at <a href="/team" className="underline">/team</a> with their Google account. You always have access.
       </p>

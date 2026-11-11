@@ -3,8 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import MetaConnect from '../components/meta/MetaConnect.jsx'
 import AreaChart from '../components/analytics/AreaChart.jsx'
 import { fieldClass } from '../components/ui/fieldStyles.js'
-import { listAdAccounts, adsManagerUrl } from '../lib/meta.js'
-import { clearMetaToken, getMetaToken } from '../lib/metaAuth.js'
+import Button from '../components/ui/Button.jsx'
+import { getMe, listAdAccounts, adsManagerUrl } from '../lib/meta.js'
+import { clearMetaToken, getMetaToken, takeMetaLoginError } from '../lib/metaAuth.js'
 import { getCampaign, getCampaignRows, getOverview } from '../lib/metaAnalytics.js'
 import { formatValue } from '../lib/analyticsFormat.js'
 import { analytics as copy, defaultMetric, defaultRange, metrics, ranges } from '../data/analytics.js'
@@ -36,6 +37,8 @@ export default function Analytics() {
   const [params, setParams] = useSearchParams()
   const [token, setToken] = useState(getMetaToken)
   const [expired, setExpired] = useState(false)
+  const [loginError] = useState(takeMetaLoginError)
+  const [me, setMe] = useState(null) // the connected Facebook account: { id, name }
   const [accounts, setAccounts] = useState(null)
   const [accountId, setAccountId] = useState(() => remembered(ACCOUNT_KEY, ''))
   const [range, setRange] = useState(() => {
@@ -60,10 +63,19 @@ export default function Analytics() {
     setParams(next)
   }
 
+  function disconnect() {
+    clearMetaToken()
+    setToken(null)
+    setMe(null)
+    setAccounts(null)
+    setOverview(null)
+    setDetail(null)
+    setError('')
+  }
+
   function fail(err) {
     if (err.kind === 'auth') {
-      clearMetaToken()
-      setToken(null)
+      disconnect()
       setExpired(true)
     } else {
       setError(`${copy.loadFailed}: ${err.message}`)
@@ -74,8 +86,9 @@ export default function Analytics() {
   useEffect(() => {
     if (!token) return
     let current = true
-    listAdAccounts(token).then((list) => {
+    Promise.all([me ?? getMe(token), listAdAccounts(token)]).then(([m, list]) => {
       if (!current) return
+      setMe(m)
       setAccounts(list)
       setAccountId((id) => (list.some((a) => a.id === id) ? id : list[0]?.id ?? ''))
     }, (err) => current && fail(err))
@@ -113,23 +126,6 @@ export default function Analytics() {
     })
   }, [overview, metric])
 
-  if (!token) {
-    return (
-      <div className="max-w-xl">
-        <h1 className="text-4xl font-extrabold tracking-tight">{copy.title}</h1>
-        <p className="mt-3 text-white/60">{copy.intro}</p>
-        <section className="glass mt-10 p-6">
-          <h2 className="mb-4 text-lg font-semibold">{copy.connectTitle}</h2>
-          <MetaConnect
-            expired={expired}
-            returnTo="/analytics"
-            onConnect={({ token: t }) => { setExpired(false); setToken(t) }}
-          />
-        </section>
-      </div>
-    )
-  }
-
   const points = view?.days.map((d) => ({ date: d.date, value: d[metric.key] })) ?? []
 
   return (
@@ -146,6 +142,27 @@ export default function Analytics() {
         </>
       )}
 
+      {/* Meta connection: the same login, token and layout as step 1 of /admin/campaigns. */}
+      <section className="glass mt-8 p-5 md:p-6">
+        <h2 className="text-lg font-semibold">{copy.connectTitle}</h2>
+        <div className="mt-4">
+          {token ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <span className="text-white/70">{me ? <>Connected as <span className="text-white">{me.name}</span></> : 'Checking…'}</span>
+              <Button variant="secondary" onClick={disconnect}>Disconnect</Button>
+            </div>
+          ) : (
+            <MetaConnect
+              expired={expired}
+              loginError={loginError}
+              returnTo={`/analytics${window.location.search}`}
+              onConnect={({ token: t, me: m }) => { setMe(m); setExpired(false); setToken(t) }}
+            />
+          )}
+        </div>
+      </section>
+
+      {token && <>
       {/* Filters: one row above everything they apply to. */}
       <div className="mt-8 flex flex-wrap items-end gap-3">
         {!campaignId && accounts?.length > 1 && (
@@ -255,6 +272,7 @@ export default function Analytics() {
           )}
         </div>
       )}
+      </>}
     </div>
   )
 }

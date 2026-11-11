@@ -24,7 +24,7 @@ export const seo = {
   '/admin/drive': { title: `Drive | ${site.name}`, description },
   '/admin/campaigns': { title: `New Meta campaign | ${site.name}`, description },
   '/analytics': { title: `Analytics | ${site.name}`, description },
-  '/admin/team': { title: `Team | ${site.name}`, description },
+  '/admin/team': { title: `Team admin | ${site.name}`, description },
   '/team': { title: `Team portal | ${site.name}`, description },
   '/team/chat': { title: `Messages | ${site.name}`, description },
 }
