@@ -128,6 +128,8 @@ src/
     team/
       TeamAccess.jsx        layout route: sign-in and team-list check for /team pages; useTeamMember() → { email, name, role }
       Conversation.jsx      one chat: live message list + the box to write in
+    analytics/
+      AreaChart.jsx         one metric per day as a smooth SVG area chart; hover, touch or arrow keys read a day
     auth/
       AuthProvider.jsx      layout route: Firebase auth state; useAuth() → { configured, user, loading, isOwner, signIn, signOut }
       RequireOwner.jsx      layout route: renders children only for the owner, else redirects to /login
@@ -142,6 +144,7 @@ src/
     admin/Dashboard.jsx     /admin landing page: cards linking to each owner-only tool
     admin/Drive.jsx         /admin/drive: searchable Google Drive browser (see Drive browser)
     admin/Campaigns.jsx     /admin/campaigns: Drive folder → copied Meta campaign (see Meta campaign builder)
+    Analytics.jsx           /analytics: Meta Ads numbers at a glance (owner only; see Analytics)
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
     TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
@@ -157,6 +160,8 @@ src/
     metaAuth.js             startMetaLogin() / readMetaLoginRedirect() (direct Facebook login), get/set/clear the Meta token
     campaignCopy.js         uploadVideos() and finishRun(): the two stages of the Drive → Meta pipeline; runProgress()
     campaignRuns.js         Firestore: saved runs (campaignRuns) and the upload ledger (metaUploads)
+    metaAnalytics.js        Meta Insights (read-only) for /analytics: getOverview(), getCampaignRows(), getCampaign()
+    analyticsFormat.js      formatValue() (money / count / percent), shortDay(), longDay()
     team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
     teamChat.js             Firestore: team messaging (chats and their messages), live updates
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
@@ -183,6 +188,7 @@ Defined in `src/App.jsx`.
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
 | `/admin/campaigns` | Meta campaign builder (owner only) | AdminLayout | admin header, Drive folder button |
+| `/analytics` | Analytics: Meta Ads at a glance (owner only) | AdminLayout | admin header, dashboard |
 | `/admin/team` | Team list and welcome message (owner only) | AdminLayout | admin header, dashboard |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
@@ -228,6 +234,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | `roster.js` | `flagship`, `artists` | artists (see shape below); `flagship.spotifyUrl` powers the homepage player; all artists' quotes show on the /login side panel |
 | `global.js` | `globalGame` | copy and settings for the /global game: rounds, guesses per round, messages and the **gift link** (`gift.url`, `gift.label`) |
 | `countries.js` | `countries`, `outlineSize` | **generated** (`npm run build:countries`): country names, centre points and SVG outlines. Do not edit by hand |
+| `analytics.js` | `analytics`, `ranges`, `metrics` | copy for /analytics, its date ranges and the metrics it can chart (label, format, which direction is better) |
 | `team.js` | `team` | copy for the team portal: sign-in, nav, messaging labels and fallback welcome text (the team list, welcome message and messages themselves are in Firestore) |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
@@ -345,6 +352,19 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 ### Adding an owner-only feature
 
 Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Route path="/admin/your-tool">` next to the Dashboard route (inside `RequireOwner` → `AdminLayout`). Use `useAuth()` for the user. Add a title in `data/seo.js`.
+
+---
+
+## Analytics
+
+`/analytics` (owner only, "Analytics" in the admin header) shows the Meta Ads account's numbers at a glance. The layout follows Sam's earlier intellijend "Console" demo: filters, a big area chart with a metric dropdown, and a "Top" list that opens a detail view with a back button.
+
+- **Filters** (one row at the top): ad account (shared with `/admin/campaigns` via `localStorage` `meta-account`; only shown with more than one account) and date range (past 7 / 14 / 28 / 90 days, Meta's `date_preset`s: whole days in the ad account's time zone, today excluded; remembered in `localStorage`).
+- **Totals:** amount spent, impressions, reach, link clicks, CTR (link clicks ÷ impressions), CPC (spend ÷ link clicks) and CPM. Clicking a total charts it. Totals come from Meta for the whole period, because reach can't be added up across days.
+- **Chart:** one metric per day (`?metric=` in the URL). Days with no delivery show as 0. Hover, tap or focus it and use the arrow keys to read a day; "Show as a table" lists every day. No chart library and no animation: `components/analytics/AreaChart.jsx` draws SVG (monotone curve, so it never dips below 0 or overshoots a real value).
+- **Top campaigns:** every campaign that delivered in the period, sorted by the charted metric (costs: lowest first; campaigns without a value last). Clicking one opens `?campaign=<id>`: the same totals and chart for that campaign, and a link to it in Ads Manager.
+- **Meta connection:** the same token as `/admin/campaigns` (this tab, or remembered). "Continue with Facebook" returns to `/admin/campaigns` (the only registered redirect URI), which forwards straight back to `/analytics` (`startMetaLogin(returnTo)` in `lib/metaAuth.js`). An expired token shows the connect box again.
+- Read-only: it never changes anything on Meta. Money is in the ad account's currency.
 
 ---
 
@@ -541,6 +561,7 @@ npm run dev       # then check in the browser:
 - `/team` signed out: the sign-in card shows. Signed in as the owner: the welcome page shows. As a Google account not on the list: "isn't on the team list" and Sign out
 - `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
 - `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
+- `/analytics` (owner): connect Meta; totals, chart and Top campaigns load; clicking a total or the dropdown changes the chart; changing the date range reloads everything; a campaign opens its own view and ‹ goes back; "Continue with Facebook" comes back to `/analytics`. At phone width the admin tabs sit on a second row that scrolls sideways
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

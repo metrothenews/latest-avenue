@@ -4,6 +4,7 @@ import { useAuth } from '../../components/auth/AuthProvider.jsx'
 const tools = [
   { to: '/admin/drive', title: 'Drive', text: 'Search and preview your Google Drive files.' },
   { to: '/admin/campaigns', title: 'New Meta campaign', text: 'Copy a Meta campaign and add one ad per video from a Drive folder.' },
+  { to: '/analytics', title: 'Analytics', text: 'Your Meta Ads spend, reach, clicks and costs at a glance, per day and per campaign.' },
   { to: '/admin/team', title: 'Team', text: 'Choose who can open the team portal and edit its welcome message.' },
 ]
 

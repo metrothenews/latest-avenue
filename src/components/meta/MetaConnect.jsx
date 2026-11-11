@@ -9,7 +9,8 @@ import { metaPermissions } from '../../data/meta.js'
 // Connects the Meta Marketing API: "Continue with Facebook" (leaves for Facebook and comes back with
 // a token, see lib/metaAuth.js), or a pasted Graph API Explorer token as a fallback.
 // Calls onConnect({ token, me }) once a pasted token works. loginError: why the last Facebook login failed.
-export default function MetaConnect({ onConnect, expired, loginError }) {
+// returnTo: a page to come back to after Facebook login (default: /admin/campaigns, where Facebook returns).
+export default function MetaConnect({ onConnect, expired, loginError, returnTo }) {
   const [showPaste, setShowPaste] = useState(false)
   const [token, setToken] = useState('')
   const [remember, setRemember] = useState(false)
@@ -25,7 +26,7 @@ export default function MetaConnect({ onConnect, expired, loginError }) {
   function handleFacebook() {
     setBusy(true)
     setError('')
-    startMetaLogin()
+    startMetaLogin(returnTo)
   }
 
   async function handlePaste(e) {
