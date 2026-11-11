@@ -132,7 +132,7 @@ export default function Team() {
         </form>
       </section>
 
-      {members && <AssignmentsAdmin members={members} />}
+      <AssignmentsAdmin />
     </div>
   )
 }

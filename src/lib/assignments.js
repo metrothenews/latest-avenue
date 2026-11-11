@@ -1,16 +1,18 @@
-// Team assignments: one Google Doc (or Word file in Drive) holds a backlog of assignments, one per
-// heading. The owner imports it at /admin/team; each assignment is saved as Markdown in Firestore
-// and shows up in the team portal only for the people it is assigned to (see firestore.rules).
-// - assignments/{key}: { title, markdown, order, assignees: [email], updatedAt }
-// - adminSettings/assignments: { url, docId, level } (owner only): the source doc and heading level.
-import { collection, deleteDoc, doc, getDoc, getDocsFromServer, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+// Team assignments: ONE doc (a Google Doc, or a Word file in Drive) shown whole, with its formatting,
+// on /team/assignments. The owner sets the link at /admin/team and presses Refresh to pull the
+// doc's current contents; they are saved to Firestore as cleaned-up HTML for the team to read.
+// - adminSettings/assignments: { url, docId } (owner only): the doc's link.
+// - portal/assignments: { title, updatedAt, version, parts }, and the HTML itself in
+//   portal/assignments-<version>-<n> (split up, because a Firestore document holds at most 1 MiB).
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db, deadline } from './team.js'
 import { DriveError } from './drive.js'
-import { slugify } from './format.js'
 
-const ASSIGNMENTS = 'assignments'
 const SOURCE = doc(db, 'adminSettings', 'assignments')
-const MAX_BYTES = 900 * 1024 // Firestore allows 1 MiB per document; keep room for the other fields
+const META = doc(db, 'portal', 'assignments')
+const part = (version, n) => doc(db, 'portal', `assignments-${version}-${n}`)
+const PART_CHARS = 240_000 // under 1 MiB even if every character takes 4 bytes
+const MAX_PARTS = 40
 const GOOGLE_DOC = 'application/vnd.google-apps.document'
 const WORD_DOC = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
@@ -33,123 +35,135 @@ async function driveFetch(token, url) {
   throw new DriveError(message, 'other')
 }
 
-// The doc as Markdown: Google's own Markdown export for a Google Doc, or a conversion in the
-// browser for a Word file (Word → HTML with mammoth → Markdown with turndown).
-export async function fetchDocMarkdown(token, docId) {
+// The doc as cleaned-up HTML (see cleanHtml): { name, html }.
+// A Google Doc comes from Google's HTML export; a Word file is converted in the browser by mammoth.
+export async function fetchDocHtml(token, docId) {
   const api = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(docId)}`
   const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType&supportsAllDrives=true`)).json()
   if (meta.mimeType === GOOGLE_DOC) {
-    const markdown = await (await driveFetch(token, `${api}/export?mimeType=text%2Fmarkdown`)).text()
-    return { name: meta.name, markdown }
+    const [html, markdown] = await Promise.all([
+      driveFetch(token, `${api}/export?mimeType=text%2Fhtml`).then((r) => r.text()),
+      // Only for its images: the HTML export links to images that expire, the Markdown export embeds them.
+      driveFetch(token, `${api}/export?mimeType=text%2Fmarkdown`).then((r) => r.text()).catch(() => ''),
+    ])
+    const images = [...markdown.matchAll(/^\[[^\]]+\]:[ \t]*<?(data:image\/[^>\s]+)>?[ \t]*$/gm)].map((m) => m[1])
+    return { name: meta.name, html: cleanHtml(html, images) }
   }
   if (meta.mimeType === WORD_DOC) {
     const buffer = await (await driveFetch(token, `${api}?alt=media&supportsAllDrives=true`)).arrayBuffer()
-    const [{ default: mammoth }, { default: TurndownService }, { gfm }] = await Promise.all([
-      import('mammoth/mammoth.browser.js'),
-      import('turndown'),
-      import('turndown-plugin-gfm'),
-    ])
-    const { value: html } = await mammoth.convertToHtml({ arrayBuffer: buffer })
-    const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', bulletListMarker: '-' })
-    turndown.use(gfm)
-    return { name: meta.name, markdown: turndown.turndown(html) }
+    const { default: mammoth } = await import('mammoth/mammoth.browser.js')
+    const { value } = await mammoth.convertToHtml({ arrayBuffer: buffer }, { ignoreEmptyParagraphs: false, styleMap: ['u => u', 'strike => s'] })
+    return { name: meta.name.replace(/\.docx$/i, ''), html: cleanHtml(value) }
   }
   throw new DriveError(`That file is a ${meta.mimeType}. Use a Google Doc or a Word (.docx) file.`, 'other')
 }
 
-// --- Splitting into assignments ---
+// --- Cleaning the HTML ---
 
-const HEADING = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/
-const FENCE = /^(```|~~~)/
-// Google's export puts images at the end as reference definitions: [image1]: <data:image/png;base64,…>
-const REF_DEF = /^\[([^\]]+)\]:[ \t]*<?(\S+?)>?[ \t]*$/
+const KEEP = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'br', 'hr', 'a', 'img', 'strong', 'b', 'em', 'i', 'u', 's', 'sup', 'sub'])
+const DROP = new Set(['style', 'script', 'head', 'title', 'meta', 'link', 'iframe', 'object'])
 
-// Heading text without Markdown emphasis or escapes: "**Week 1:** Intro\_" → "Week 1: Intro_".
-const plain = (text) => text.replace(/[*_]{1,3}(\S(?:.*?\S)?)[*_]{1,3}/g, '$1').replace(/\\([\\`*_{}[\]()#+\-.!|])/g, '$1').trim()
-
-// Lines of the doc, which ones are headings (outside code blocks), and its reference definitions.
-function parse(markdown) {
-  const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
-  const defs = new Map()
-  const body = []
-  let fenced = false
-  for (const line of lines) {
-    if (FENCE.test(line.trim())) fenced = !fenced
-    const def = !fenced && line.match(REF_DEF)
-    if (def) {
-      defs.set(def[1].toLowerCase(), line)
-      continue
-    }
-    const h = !fenced && line.match(HEADING)
-    body.push({ line, level: h ? h[1].length : 0, text: h ? plain(h[2]) : '' })
-  }
-  return { body, defs }
-}
-
-// How many headings the doc has at each level: { 1: 3, 2: 14, … }.
-export function headingCounts(markdown) {
-  const counts = {}
-  for (const l of parse(markdown).body) if (l.level && l.text) counts[l.level] = (counts[l.level] ?? 0) + 1
-  return counts
-}
-
-// The level that most likely starts each assignment: the highest level used at least twice
-// (or the only one there is).
-export function suggestLevel(markdown) {
-  const counts = headingCounts(markdown)
-  const levels = Object.keys(counts).map(Number).sort((a, b) => a - b)
-  return levels.find((l) => counts[l] >= 2) ?? levels[0] ?? null
-}
-
-// Replaces embedded images with a note when an assignment is too big to save with them.
-function fitSize(markdown) {
-  const bytes = new TextEncoder().encode(markdown).length
-  if (bytes <= MAX_BYTES) return { markdown, imagesRemoved: false }
-  const note = '*(Image left out: too large to show here.)*'
-  const slim = markdown
-    .replace(/!\[[^\]]*\]\(\s*<?data:[^)]*\)/g, note)
-    .replace(/!\[[^\]]*\]\[[^\]]*\]/g, note)
-    .replace(/^\[[^\]]+\]:[ \t]*<?data:\S*$/gm, '')
-  return { markdown: slim, imagesRemoved: true, tooBig: new TextEncoder().encode(slim).length > MAX_BYTES }
-}
-
-// Splits the doc at every heading of `level` (headings at that level or above end an assignment).
-// Returns { intro: text before the first one, items: [{ key, title, markdown, imagesRemoved, tooBig }] }.
-// `key` comes from the title, so re-importing keeps each assignment (and who it's assigned to).
-export function splitAssignments(markdown, level) {
-  const { body, defs } = parse(markdown)
-  const items = []
-  const intro = []
-  let current = null
-  for (const l of body) {
-    if (l.level && l.level <= level && l.text) {
-      if (l.level === level) {
-        current = { title: l.text, lines: [] }
-        items.push(current)
-      } else {
-        current = null // a higher heading (e.g. a section title) is not part of any assignment
-      }
-      continue
-    }
-    if (current) current.lines.push(l.line)
-    else intro.push(l.line)
-  }
-  const used = new Map()
+// What a CSS declaration block says about text: { bold, italic, underline, strike, align }.
+function readStyle(css) {
+  const get = (prop) => css.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i'))?.[1].trim().toLowerCase()
+  const weight = get('font-weight')
+  const decoration = get('text-decoration') ?? get('text-decoration-line') ?? ''
+  const align = get('text-align')
   return {
-    intro: intro.join('\n').trim(),
-    items: items.map(({ title, lines }) => {
-      let text = lines.join('\n').trim()
-      // Bring along the image definitions this assignment refers to.
-      const refs = [...text.matchAll(/!?\[[^\]]*\]\[([^\]]+)\]/g)].map((m) => m[1].toLowerCase())
-      const own = [...new Set(refs)].filter((r) => defs.has(r)).map((r) => defs.get(r))
-      if (own.length) text += `\n\n${own.join('\n')}`
-      const base = slugify(title).slice(0, 80) || 'assignment'
-      const n = (used.get(base) ?? 0) + 1
-      used.set(base, n)
-      return { key: n > 1 ? `${base}-${n}` : base, title, ...fitSize(text) }
-    }),
+    bold: weight ? weight === 'bold' || Number(weight) >= 600 : undefined,
+    italic: get('font-style') ? get('font-style') === 'italic' : undefined,
+    underline: decoration ? decoration.includes('underline') : undefined,
+    strike: decoration ? decoration.includes('line-through') : undefined,
+    align: align === 'center' || align === 'right' ? align : undefined,
   }
 }
+
+// Google wraps every link as https://www.google.com/url?q=<real link>&sa=…
+function realLink(href) {
+  try {
+    const url = new URL(href)
+    if (/(^|\.)google\.com$/.test(url.hostname) && url.pathname === '/url' && url.searchParams.get('q')) return url.searchParams.get('q')
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol) ? href : null
+  } catch {
+    return null
+  }
+}
+
+// Turns a doc's exported HTML into plain, safe HTML that keeps what matters for reading it:
+// paragraphs and blank lines, bold / italic / underline / strikethrough, headings, lists (with
+// nesting), links, tables, alignment and images. Fonts, sizes and colours are left to the site's
+// own style. Google's export puts formatting in CSS classes, which are resolved here.
+// `images`: data: URLs to use for the doc's images, in order (Google Docs only).
+export function cleanHtml(rawHtml, images = []) {
+  const source = new DOMParser().parseFromString(rawHtml, 'text/html')
+  const rules = new Map()
+  for (const style of source.querySelectorAll('style')) {
+    for (const [, selector, css] of style.textContent.matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) rules.set(selector, readStyle(css))
+  }
+  const styleOf = (el) => {
+    const out = {}
+    for (const name of el.classList) Object.entries(rules.get(name) ?? {}).forEach(([k, v]) => v !== undefined && (out[k] = v))
+    Object.entries(readStyle(el.getAttribute('style') ?? '')).forEach(([k, v]) => v !== undefined && (out[k] = v))
+    return out
+  }
+
+  const out = document.implementation.createHTMLDocument('')
+  let imageIndex = 0
+
+  // `inside`: 'a' or 'h' when within a link or a heading, which are underlined / bold already.
+  function convert(node, parent, inside) {
+    if (node.nodeType === Node.TEXT_NODE) return parent.append(out.createTextNode(node.textContent))
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    let tag = node.tagName.toLowerCase()
+    if (DROP.has(tag)) return
+    const style = styleOf(node)
+
+    if (tag === 'img') {
+      const src = images.length ? images[imageIndex++] : node.getAttribute('src')
+      if (!/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src ?? '')) return
+      const img = out.createElement('img')
+      img.setAttribute('src', src)
+      img.setAttribute('alt', node.getAttribute('alt') ?? '')
+      return parent.append(img)
+    }
+
+    let target = parent
+    if (tag === 'p' && node.classList.contains('title')) tag = 'h1'
+    if (KEEP.has(tag)) {
+      const el = out.createElement(tag)
+      if (tag === 'a') {
+        const href = realLink(node.getAttribute('href') ?? '')
+        if (href) el.setAttribute('href', href)
+      }
+      if (style.align && /^(p|h\d|td|th|li)$/.test(tag)) el.setAttribute('data-align', style.align)
+      if (tag === 'ul' || tag === 'ol') {
+        // Google exports a nested list as a separate list whose class ends in its depth (…-1, …-2).
+        const depth = [...node.classList].map((c) => c.match(/^lst-.*-(\d)$/)?.[1]).find(Boolean)
+        if (Number(depth) > 0) el.setAttribute('data-level', depth)
+        if (tag === 'ol' && node.getAttribute('start')) el.setAttribute('start', node.getAttribute('start'))
+      }
+      if ((tag === 'td' || tag === 'th')) for (const a of ['colspan', 'rowspan']) if (node.getAttribute(a)) el.setAttribute(a, node.getAttribute(a))
+      parent.append(el)
+      target = el
+    }
+    // Formatting that arrived as CSS (Google's <span class="c3">) becomes real tags.
+    const within = tag === 'a' ? `${inside}a` : /^h\d$/.test(tag) ? `${inside}h` : inside
+    const linked = within.includes('a') || node.querySelector('a')
+    const wraps = [style.bold && !within.includes('h') && 'strong', style.italic && 'em', style.underline && !linked && 'u', style.strike && 's']
+    for (const wrap of wraps.filter(Boolean)) {
+      if (!node.textContent.trim()) break
+      const el = out.createElement(wrap)
+      target.append(el)
+      target = el
+    }
+    for (const child of node.childNodes) convert(child, target, within)
+  }
+
+  for (const child of source.body.childNodes) convert(child, out.body, '')
+  return out.body.innerHTML.trim()
+}
+
+const withoutImages = (html) => html.replace(/<img\b[^>]*>/gi, '<em>(Image left out: the doc is too large to show with its images.)</em>')
 
 // --- Firestore ---
 
@@ -158,65 +172,36 @@ export async function getSource() {
   return snap.exists() ? snap.data() : null
 }
 
-export const saveSource = (source) => deadline(setDoc(SOURCE, source))
-
-const toAssignment = (d) => ({ id: d.id, ...d.data() })
-const byOrder = (a, b) => (a.order ?? 0) - (b.order ?? 0)
-
-// Owner: every assignment, in the doc's order.
-export async function listAllAssignments() {
-  const snap = await deadline(getDocsFromServer(collection(db, ASSIGNMENTS)))
-  return snap.docs.map(toAssignment).sort(byOrder)
-}
-
-// A team member: the assignments given to them.
-export async function listMyAssignments(email) {
-  const snap = await deadline(getDocsFromServer(query(collection(db, ASSIGNMENTS), where('assignees', 'array-contains', email))))
-  return snap.docs.map(toAssignment).sort(byOrder)
-}
-
-export async function getAssignment(id) {
-  const snap = await deadline(getDoc(doc(db, ASSIGNMENTS, id)))
-  return snap.exists() ? toAssignment(snap) : null
-}
-
-// Saves an import: adds new assignments, updates changed ones (keeping who they're assigned to)
-// and deletes the ones no longer in the doc. `existing` is listAllAssignments().
-export async function publishImport(items, existing) {
-  const now = new Date().toISOString()
-  const keys = new Set(items.map((i) => i.key))
-  const writes = [
-    ...items.map((item, order) => (batch) => {
-      const old = existing.find((a) => a.id === item.key)
-      const data = { title: item.title, markdown: item.markdown, order }
-      if (!old) batch.set(doc(db, ASSIGNMENTS, item.key), { ...data, assignees: [], updatedAt: now })
-      else if (old.title !== item.title || old.markdown !== item.markdown || old.order !== order) {
-        batch.update(doc(db, ASSIGNMENTS, item.key), { ...data, ...(old.markdown !== item.markdown && { updatedAt: now }) })
-      }
-    }),
-    ...existing.filter((a) => !keys.has(a.id)).map((a) => (batch) => batch.delete(doc(db, ASSIGNMENTS, a.id))),
-  ]
-  // A batch holds at most 500 writes.
-  for (let i = 0; i < writes.length; i += 400) {
-    const batch = writeBatch(db)
-    writes.slice(i, i + 400).forEach((write) => write(batch))
-    await deadline(batch.commit(), 60)
+// Saves the doc as what the team sees, replacing whatever was there. Returns { imagesRemoved }.
+export async function publishDoc({ url, docId, name, html }) {
+  let body = html
+  let imagesRemoved = false
+  if (body.length > PART_CHARS * MAX_PARTS) {
+    body = withoutImages(body)
+    imagesRemoved = true
   }
+  if (body.length > PART_CHARS * MAX_PARTS) throw new Error('This doc is too long to show on the site, even without its images.')
+  const previous = (await deadline(getDoc(META))).data()
+  const version = Date.now().toString(36)
+  const parts = Math.max(1, Math.ceil(body.length / PART_CHARS))
+  // Parts first, then the entry that points at them, so a reader never sees half of a new version.
+  for (let n = 0; n < parts; n++) await deadline(setDoc(part(version, n), { html: body.slice(n * PART_CHARS, (n + 1) * PART_CHARS) }), 60)
+  await deadline(setDoc(META, { title: name, updatedAt: new Date().toISOString(), version, parts }))
+  await deadline(setDoc(SOURCE, { url, docId }))
+  for (let n = 0; n < (previous?.parts ?? 0); n++) await deadline(deleteDoc(part(previous.version, n))).catch(() => {})
+  return { imagesRemoved }
 }
 
-export const setAssignees = (id, assignees) => deadline(updateDoc(doc(db, ASSIGNMENTS, id), { assignees }))
+// When and from what the team's page was last refreshed: { title, updatedAt } or null.
+export async function getDocInfo() {
+  const snap = await deadline(getDoc(META))
+  return snap.exists() ? snap.data() : null
+}
 
-export const deleteAssignment = (id) => deadline(deleteDoc(doc(db, ASSIGNMENTS, id)))
-
-// What an import would change: [{ ...item, status: 'new' | 'changed' | 'same' }] plus removed ones.
-export function compareImport(items, existing) {
-  const byId = new Map(existing.map((a) => [a.id, a]))
-  const keys = new Set(items.map((i) => i.key))
-  return {
-    items: items.map((item) => {
-      const old = byId.get(item.key)
-      return { ...item, status: !old ? 'new' : old.markdown !== item.markdown || old.title !== item.title ? 'changed' : 'same' }
-    }),
-    removed: existing.filter((a) => !keys.has(a.id)),
-  }
+// What the team sees: { title, updatedAt, html }, or null when no doc has been loaded yet.
+export async function getAssignmentsDoc() {
+  const meta = await getDocInfo()
+  if (!meta) return null
+  const parts = await Promise.all(Array.from({ length: meta.parts }, (_, n) => deadline(getDoc(part(meta.version, n)), 30)))
+  return { title: meta.title, updatedAt: meta.updatedAt, html: parts.map((p) => p.data()?.html ?? '').join('') }
 }
