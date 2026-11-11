@@ -93,7 +93,9 @@ export default function Team() {
                     {[m.name && m.email, m.role, m.addedAt && `added ${shortDate(m.addedAt)}`].filter(Boolean).join(' · ')}
                   </p>
                 </div>
-                {confirmRemove === m.email ? (
+                {m.owner ? (
+                  <span className="text-white/40">You</span>
+                ) : confirmRemove === m.email ? (
                   <span className="text-white/60">
                     Remove their access?{' '}
                     <button type="button" className="text-white underline disabled:opacity-50" onClick={() => remove(m.email)} disabled={busy}>Remove</button>{' · '}

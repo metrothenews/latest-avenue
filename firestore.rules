@@ -3,18 +3,22 @@ rules_version = '2';
 // Deploy with: firebase deploy --only firestore:rules
 // The UID below is the same as ownerUid in src/data/firebase.js (metrothenews@gmail.com).
 // The owner can read and write everything. Team members (people listed in teamMembers, managed
-// at /admin/team) can only read their own membership and the team portal's content.
+// at /admin/team) can read the team list and the portal's content, and use team messaging.
 // Everyone else, signed in or not, is denied.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner() {
       return request.auth != null && request.auth.uid == 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2';
     }
+    function myEmail() {
+      return request.auth.token.email;
+    }
+    function onTeam(email) {
+      return exists(/databases/$(database)/documents/teamMembers/$(email));
+    }
     // On the team: signed in with a verified email that has a teamMembers document.
     function isTeam() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && exists(/databases/$(database)/documents/teamMembers/$(request.auth.token.email));
+      return request.auth != null && request.auth.token.email_verified == true && onTeam(myEmail());
     }
 
     match /{document=**} {
@@ -22,15 +26,54 @@ service cloud.firestore {
     }
 
     // teamMembers/{email}: one document per person, keyed by their lowercase Google email.
+    // Anyone signed in can check their own; team members can see who else is on the team.
     match /teamMembers/{email} {
-      allow get: if request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email == email;
+      allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
+      allow read: if isTeam();
     }
 
     // portal/{doc}: what the team portal shows (e.g. portal/welcome).
     match /portal/{doc} {
       allow get: if isTeam();
+    }
+
+    // Team messaging. chats/team is the shared chat; chats/{a}|{b} is a private conversation
+    // between two team members (emails in alphabetical order, also stored in `members`).
+    // A chat document only holds who is in it and when the last message was sent.
+    match /chats/{chatId} {
+      function stamped() {
+        return request.resource.data.lastFrom == myEmail() && request.resource.data.lastAt == request.time;
+      }
+      function validPair() {
+        let members = request.resource.data.members;
+        return members is list && members.size() == 2 && members[0] < members[1]
+          && chatId == members[0] + '|' + members[1]
+          && myEmail() in members && onTeam(members[0]) && onTeam(members[1]);
+      }
+
+      allow get: if isTeam() && (chatId == 'team' || myEmail() in resource.data.members);
+      allow list: if isTeam() && myEmail() in resource.data.members;
+      allow create: if isTeam() && stamped() && (
+        (chatId == 'team' && request.resource.data.keys().hasOnly(['lastAt', 'lastFrom']))
+        || (chatId != 'team' && request.resource.data.keys().hasOnly(['members', 'lastAt', 'lastFrom']) && validPair())
+      );
+      allow update: if isTeam() && stamped()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastAt', 'lastFrom'])
+        && (chatId == 'team' || myEmail() in resource.data.members);
+
+      // Messages can be added and read by the people in the chat, never edited or deleted by them.
+      match /messages/{messageId} {
+        allow read: if isTeam() && (chatId == 'team'
+          || myEmail() in get(/databases/$(database)/documents/chats/$(chatId)).data.members);
+        // getAfter: a first message is written together with its chat document.
+        allow create: if isTeam() && (chatId == 'team'
+            || myEmail() in getAfter(/databases/$(database)/documents/chats/$(chatId)).data.members)
+          && request.resource.data.keys().hasOnly(['from', 'text', 'at'])
+          && request.resource.data.from == myEmail()
+          && request.resource.data.at == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 4000;
+      }
     }
   }
 }

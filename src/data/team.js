@@ -11,5 +11,23 @@ export const team = {
   checkFailed: "Couldn't check the team list. Check your connection and try again.",
   // Shown until a welcome message is saved at /admin/team.
   defaultHeading: 'Welcome',
+  nav: [
+    { label: 'Home', to: '/team' },
+    { label: 'Messages', to: '/team/messages' },
+  ],
+  messages: {
+    title: 'Messages',
+    teamChat: 'Team chat',
+    teamChatNote: 'Everyone on the team',
+    direct: 'Direct messages',
+    nobodyElse: 'Nobody else is on the team yet.',
+    empty: 'No messages yet.',
+    placeholder: 'Write a message',
+    send: 'Send',
+    back: 'All conversations',
+    loadFailed: "Couldn't load messages. Check your connection and reload.",
+    sendFailed: "Couldn't send. Check your connection and try again.",
+    formerMember: 'former member',
+  },
   defaultMessage: '[Welcome message goes here. Edit it in Admin → Team.]',
 }
