@@ -7,9 +7,11 @@
 // - portal/assignments: { title, updatedAt, version, parts, linked: [docId] }, and the HTML itself in
 //   portal/assignments-<version>-<n> (split up, because a Firestore document holds at most 1 MiB).
 // - portal/doc-<docId> (+ parts, same shape): each linked doc.
-// - portal/file-<fileId> (+ parts): a linked image or small audio file, as a data: URL, so the team
-//   can see or hear it on the site without Google access. Other Drive files (video, PDFs, sheets, …)
-//   are shown through Google's embedded preview (components/team/FileViewer.jsx).
+//   A linked Google Sheet is saved the same way, as a table (its first tab).
+// - portal/file-<fileId> (+ parts, plus `rev`): a linked image, audio file, video or PDF (and Google
+//   Slides, as a PDF), as a data: URL, so the team sees it on the site without Google access.
+// Everything is a snapshot taken at Refresh and stays as it is until the next Refresh. Only a file
+// too large to copy falls back to Google's live preview (components/team/FileViewer.jsx).
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db, deadline } from './team.js'
 import { DriveError } from './drive.js'
@@ -21,10 +23,15 @@ const fileKey = (fileId) => `file-${fileId}`
 const metaRef = (key) => doc(db, 'portal', key)
 const partRef = (key, version, n) => doc(db, 'portal', `${key}-${version}-${n}`)
 const MAX_LINKED = 30 // linked docs pulled in per refresh; further ones use Google's preview instead
-// Images and audio up to this size are copied onto the site (as base64 it must fit in MAX_PARTS parts).
-const MAX_MEDIA_BYTES = 7 * 1024 * 1024
-const MAX_MEDIA_TOTAL = 40 * 1024 * 1024 // per refresh
-const MEDIA_TYPES = /^(image\/(png|jpeg|gif|webp)|audio\/(mpeg|mp3|mp4|x-m4a|aac|wav|x-wav|ogg))$/
+// Images, audio, video and PDFs up to this size are copied onto the site (as base64 it must fit in
+// MAX_MEDIA_PARTS parts). Firestore isn't file storage, so this is kept modest: the free plan holds
+// 1 GiB in all.
+const MAX_MEDIA_BYTES = 20 * 1024 * 1024
+const MAX_MEDIA_PARTS = 120
+const MAX_MEDIA_TOTAL = 150 * 1024 * 1024 // newly copied per refresh
+const MEDIA_TYPES = /^(image\/(png|jpeg|gif|webp)|audio\/(mpeg|mp3|mp4|x-m4a|aac|wav|x-wav|ogg)|video\/(mp4|webm|quicktime)|application\/pdf)$/
+const GOOGLE_SHEET = 'application/vnd.google-apps.spreadsheet'
+const GOOGLE_SLIDES = 'application/vnd.google-apps.presentation'
 const PART_CHARS = 240_000 // under 1 MiB even if every character takes 4 bytes
 const MAX_PARTS = 40
 const GOOGLE_DOC = 'application/vnd.google-apps.document'
@@ -61,13 +68,53 @@ const KINDS = [
 ]
 const kindOf = (mimeType) => KINDS.find(([pattern]) => pattern.test(mimeType))?.[1] ?? 'File'
 
-// A Drive file: { name, kind } and, for a Google Doc or a Word file, its cleaned-up `html` (see cleanHtml).
-// An image or audio file small enough to copy (and within `budget.bytes` left) gets `media`, a data: URL.
-// A Google Doc comes from Google's HTML export; a Word file is converted in the browser by mammoth.
-async function fetchFile(token, fileId, budget = { bytes: 0 }) {
+const toDataUrl = (blob, mimeType) => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(reader.result.replace(/^data:[^;,]*/, `data:${mimeType}`))
+  reader.onerror = () => reject(new Error("Couldn't read a file."))
+  reader.readAsDataURL(blob)
+})
+
+const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+// CSV text → an HTML table (first row as the header).
+function csvToTable(csv) {
+  const rows = [[]]
+  let cell = ''
+  let quoted = false
+  for (let i = 0; i < csv.length; i++) {
+    const c = csv[i]
+    if (quoted) {
+      if (c === '"' && csv[i + 1] === '"') { cell += '"'; i++ } else if (c === '"') quoted = false
+      else cell += c
+    } else if (c === '"') quoted = true
+    else if (c === ',') { rows.at(-1).push(cell); cell = '' } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && csv[i + 1] === '\n') i++
+      rows.at(-1).push(cell)
+      cell = ''
+      rows.push([])
+    } else cell += c
+  }
+  rows.at(-1).push(cell)
+  const filled = rows.filter((r) => r.some((v) => v.trim()))
+  if (!filled.length) return ''
+  const row = (cells, tag) => `<tr>${cells.map((v) => `<${tag}>${escapeHtml(v)}</${tag}>`).join('')}</tr>`
+  return `<table><thead>${row(filled[0], 'th')}</thead><tbody>${filled.slice(1).map((r) => row(r, 'td')).join('')}</tbody></table>`
+}
+
+// A Drive file: { name, kind, rev } plus what was taken from it:
+// - `html`: a Google Doc or Word file (cleaned up, see cleanHtml; a Google Doc comes from Google's
+//   HTML export, a Word file is converted in the browser by mammoth), or a Google Sheet's first tab
+//   as a table;
+// - `media`: a data: URL for an image, audio file, video or PDF (Google Slides become a PDF) small
+//   enough to copy and within `ctx.budget.bytes`; or `keep: true` when the copy already on the site
+//   is still current (`ctx.known`: Map of file ID → the `rev` stored for it);
+// - `tooLarge: true` for a media file over the limits.
+async function fetchFile(token, fileId, ctx = { budget: { bytes: 0 }, known: new Map() }) {
   const api = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`
-  const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType,size&supportsAllDrives=true`)).json()
-  const file = { name: meta.name, kind: kindOf(meta.mimeType), mimeType: meta.mimeType }
+  const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType,size,md5Checksum,modifiedTime&supportsAllDrives=true`)).json()
+  const file = { name: meta.name, kind: kindOf(meta.mimeType), mimeType: meta.mimeType, rev: meta.md5Checksum ?? meta.modifiedTime ?? '' }
+  const current = Boolean(file.rev) && ctx.known.get(fileId) === file.rev
   if (meta.mimeType === GOOGLE_DOC) {
     const [html, markdown] = await Promise.all([
       driveFetch(token, `${api}/export?mimeType=text%2Fhtml`).then((r) => r.text()),
@@ -82,15 +129,24 @@ async function fetchFile(token, fileId, budget = { bytes: 0 }) {
     const { value } = await mammoth.convertToHtml({ arrayBuffer: buffer }, { ignoreEmptyParagraphs: false, styleMap: ['u => u', 'strike => s'] })
     file.name = meta.name.replace(/\.docx$/i, '')
     file.html = cleanHtml(value)
-  } else if (MEDIA_TYPES.test(meta.mimeType) && Number(meta.size) <= Math.min(MAX_MEDIA_BYTES, budget.bytes)) {
-    budget.bytes -= Number(meta.size)
-    const blob = await (await driveFetch(token, `${api}?alt=media&supportsAllDrives=true`)).blob()
-    file.media = await new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result.replace(/^data:[^;,]*/, `data:${meta.mimeType}`))
-      reader.onerror = () => reject(new Error(`Couldn't read "${meta.name}".`))
-      reader.readAsDataURL(blob)
-    })
+  } else if (meta.mimeType === GOOGLE_SHEET) {
+    file.html = csvToTable(await (await driveFetch(token, `${api}/export?mimeType=text%2Fcsv`)).text())
+  } else if (meta.mimeType === GOOGLE_SLIDES) {
+    if (current) file.keep = true
+    else {
+      const blob = await (await driveFetch(token, `${api}/export?mimeType=application%2Fpdf`)).blob()
+      if (blob.size <= Math.min(MAX_MEDIA_BYTES, ctx.budget.bytes)) {
+        ctx.budget.bytes -= blob.size
+        file.media = await toDataUrl(blob, 'application/pdf')
+      } else file.tooLarge = true
+    }
+  } else if (MEDIA_TYPES.test(meta.mimeType)) {
+    if (Number(meta.size) > MAX_MEDIA_BYTES) file.tooLarge = true
+    else if (current) file.keep = true
+    else if (Number(meta.size) <= ctx.budget.bytes) {
+      ctx.budget.bytes -= Number(meta.size)
+      file.media = await toDataUrl(await (await driveFetch(token, `${api}?alt=media&supportsAllDrives=true`)).blob(), meta.mimeType)
+    } else file.tooLarge = true
   }
   return file
 }
@@ -129,7 +185,7 @@ const driveIdsIn = (html) => [...new Set([...new DOMParser().parseFromString(htm
 // - a bare address becomes the Drive file's name, or a short description of where it goes;
 // - data-kind says what it is (Doc, Video, Audio, …; "Link" for other websites);
 // - data-doc marks a doc that was pulled in (its Drive ID, or "main"), so it opens inside the site;
-// - data-media marks an image or audio file that was copied onto the site (its Drive ID).
+// - data-media marks a file (image, audio, video, PDF) that was copied onto the site (its Drive ID).
 // `files`: Map of Drive file ID → { name, kind, html? } (null when Drive wouldn't show it).
 // `rootId`: the assignments doc itself, which a linked doc may point back to.
 function labelLinks(html, files, rootId) {
@@ -146,20 +202,29 @@ function labelLinks(html, files, rootId) {
     a.setAttribute('data-kind', file?.kind ?? (id ? (/\/document\//.test(href) ? 'Doc' : 'Drive') : href.startsWith('mailto:') ? 'Email' : 'Link'))
     // A link back to the assignments doc itself goes to the Assignments page ("main").
     if (file?.html !== undefined) a.setAttribute('data-doc', id === rootId ? 'main' : id)
-    if (file?.media) a.setAttribute('data-media', id)
+    if (file?.media || file?.keep) a.setAttribute('data-media', id)
   }
   return page.body.innerHTML
 }
 
-// Reads the doc and, following its links, every Google Doc or Word file it leads to (up to
-// MAX_LINKED), plus the images and small audio files they link to. Returns { name, html,
-// linked: [{ id, name, html }], media: [{ id, name, dataUrl }], unreadable: number of Drive links
-// that couldn't be read }.
-export async function fetchDocTree(token, docId) {
+// What's already copied onto the site: Map of file ID → the `rev` it was copied at.
+async function storedRevs() {
+  const ids = (await deadline(getDoc(metaRef(MAIN)))).data()?.files ?? []
+  const metas = await Promise.all(ids.map((id) => deadline(getDoc(metaRef(fileKey(id))))))
+  return new Map(metas.map((snap, i) => [ids[i], snap.data()?.rev]).filter(([, rev]) => rev))
+}
+
+// Reads the doc and, following its links, every page it leads to at any depth (Google Docs, Word
+// files and Google Sheets, up to MAX_LINKED), plus the images, audio, video and PDFs they link to.
+// Returns { name, html, linked: [{ id, name, html }], media: [{ id, name, rev, dataUrl | keep }],
+// unreadable: Drive links that couldn't be read, tooLarge: media files over the size limits }.
+// `onProgress(text)` reports what it's doing.
+export async function fetchDocTree(token, docId, onProgress = () => {}) {
+  const ctx = { budget: { bytes: MAX_MEDIA_TOTAL }, known: await storedRevs() }
+  onProgress('Reading the doc…')
   const root = await fetchFile(token, docId)
   if (root.html === undefined) throw new DriveError(`That file is a ${root.mimeType}. Use a Google Doc or a Word (.docx) file.`, 'other')
   const files = new Map([[docId, root]])
-  const budget = { bytes: MAX_MEDIA_TOTAL }
   let unreadable = 0
   let docs = 1
   let queue = [docId]
@@ -168,7 +233,8 @@ export async function fetchDocTree(token, docId) {
     for (const id of queue) {
       const ids = driveIdsIn(files.get(id).html).filter((linkId) => !files.has(linkId))
       ids.forEach((linkId) => files.set(linkId, null)) // claimed, so two docs linking to it fetch it once
-      const fetched = await Promise.all(ids.map((linkId) => fetchFile(token, linkId, budget).catch((err) => {
+      if (ids.length) onProgress(`Reading ${ids.length} linked file${ids.length === 1 ? '' : 's'} from “${files.get(id).name}”…`)
+      const fetched = await Promise.all(ids.map((linkId) => fetchFile(token, linkId, ctx).catch((err) => {
         if (err.kind === 'auth') throw err
         unreadable++
         return null
@@ -186,8 +252,9 @@ export async function fetchDocTree(token, docId) {
   }
   const linked = [...files].filter(([id, file]) => id !== docId && file?.html !== undefined)
     .map(([id, file]) => ({ id, name: file.name, html: labelLinks(file.html, files, docId) }))
-  const media = [...files].filter(([, file]) => file?.media).map(([id, file]) => ({ id, name: file.name, dataUrl: file.media }))
-  return { name: root.name, html: labelLinks(root.html, files, docId), linked, media, unreadable }
+  const media = [...files].filter(([, file]) => file?.media || file?.keep).map(([id, file]) => ({ id, name: file.name, rev: file.rev, ...(file.keep ? { keep: true } : { dataUrl: file.media }) }))
+  const tooLarge = [...files.values()].filter((file) => file?.tooLarge).length
+  return { name: root.name, html: labelLinks(root.html, files, docId), linked, media, unreadable, tooLarge }
 }
 
 // --- Cleaning the HTML ---
@@ -309,11 +376,12 @@ export async function getSource() {
 async function store(key, { title, html }, extra = {}) {
   let body = html
   let imagesRemoved = false
-  if (body.length > PART_CHARS * MAX_PARTS && !body.startsWith('data:')) {
+  const isMedia = body.startsWith('data:')
+  if (body.length > PART_CHARS * MAX_PARTS && !isMedia) {
     body = withoutImages(body)
     imagesRemoved = true
   }
-  if (body.length > PART_CHARS * MAX_PARTS) throw new Error(`"${title}" is too long to show on the site, even without its images.`)
+  if (body.length > PART_CHARS * (isMedia ? MAX_MEDIA_PARTS : MAX_PARTS)) throw new Error(`"${title}" is too ${isMedia ? 'large to copy onto the site' : 'long to show on the site, even without its images'}.`)
   const previous = (await deadline(getDoc(metaRef(key)))).data()
   const version = Date.now().toString(36)
   const parts = Math.max(1, Math.ceil(body.length / PART_CHARS))
@@ -331,12 +399,17 @@ async function remove(key) {
   for (let n = 0; n < (meta?.parts ?? 0); n++) await deadline(deleteDoc(partRef(key, meta.version, n))).catch(() => {})
 }
 
-// Saves a fetchDocTree() result as what the team sees, replacing whatever was there.
-// Returns { imagesRemoved }.
-export async function publishDoc({ url, docId, name, html, linked, media }) {
+// Saves a fetchDocTree() result as what the team sees, replacing whatever was there. Files whose
+// copy on the site is still current (`keep`) are left alone. Returns { imagesRemoved }.
+export async function publishDoc({ url, docId, name, html, linked, media }, onProgress = () => {}) {
   const previous = (await deadline(getDoc(metaRef(MAIN)))).data()
   const before = previous?.linked ?? []
-  for (const m of media) await store(fileKey(m.id), { title: m.name, html: m.dataUrl })
+  const fresh = media.filter((m) => m.dataUrl)
+  for (const [i, m] of fresh.entries()) {
+    onProgress(`Copying “${m.name}” onto the site (${i + 1} of ${fresh.length})…`)
+    await store(fileKey(m.id), { title: m.name, html: m.dataUrl }, { rev: m.rev })
+  }
+  onProgress('Saving the pages…')
   // Linked docs first, so the main doc's buttons never lead to a page that isn't there yet.
   const removed = []
   for (const l of linked) removed.push(await store(linkedKey(l.id), { title: l.name, html: l.html }))
@@ -353,11 +426,17 @@ export async function getDocInfo() {
   return snap.exists() ? snap.data() : null
 }
 
-async function load(key) {
+// `onProgress(fraction)` reports how much of a large file has arrived.
+async function load(key, onProgress = () => {}) {
   const snap = await deadline(getDoc(metaRef(key)))
   if (!snap.exists()) return null
   const meta = snap.data()
-  const parts = await Promise.all(Array.from({ length: meta.parts }, (_, n) => deadline(getDoc(partRef(key, meta.version, n)), 30)))
+  const parts = []
+  for (let n = 0; n < meta.parts; n += 8) {
+    const batch = Array.from({ length: Math.min(8, meta.parts - n) }, (_, i) => deadline(getDoc(partRef(key, meta.version, n + i)), 60))
+    parts.push(...(await Promise.all(batch)))
+    onProgress(parts.length / meta.parts)
+  }
   return { title: meta.title, updatedAt: meta.updatedAt, html: parts.map((p) => p.data()?.html ?? '').join('') }
 }
 
@@ -367,11 +446,11 @@ export const getAssignmentsDoc = () => load(MAIN)
 // A doc the assignments doc links to: { title, updatedAt, html }, or null if it wasn't pulled in.
 export const getLinkedDoc = (docId) => (/^[\w-]{20,}$/.test(docId) ? load(linkedKey(docId)) : Promise.resolve(null))
 
-// An image or audio file copied onto the site: { title, dataUrl }, or null if it wasn't.
-export async function getStoredFile(fileId) {
+// A file copied onto the site (image, audio, video or PDF): { title, dataUrl }, or null if it wasn't.
+export async function getStoredFile(fileId, onProgress) {
   if (!/^[\w-]{20,}$/.test(fileId)) return null
-  const file = await load(fileKey(fileId))
-  return file && /^data:(image|audio)\//.test(file.html) ? { title: file.title, dataUrl: file.html } : null
+  const file = await load(fileKey(fileId), onProgress)
+  return file && /^data:(image\/|audio\/|video\/|application\/pdf)/.test(file.html) ? { title: file.title, dataUrl: file.html } : null
 }
 
 // Google's embeddable preview for a Drive link, so it can be shown inside the site, or null.

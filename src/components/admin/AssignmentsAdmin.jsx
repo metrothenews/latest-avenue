@@ -16,6 +16,7 @@ export default function AssignmentsAdmin() {
   const [shown, setShown] = useState(undefined) // { title, updatedAt } on the team's page; null if nothing; undefined while loading
   const [driveToken, setDriveToken] = useState(getDriveToken)
   const [busy, setBusy] = useState('')
+  const [progress, setProgress] = useState('')
   const [status, setStatus] = useState('')
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function AssignmentsAdmin() {
       setStatus(`${failure}: ${err.message}`)
     } finally {
       setBusy('')
+      setProgress('')
     }
   }
 
@@ -55,14 +57,16 @@ export default function AssignmentsAdmin() {
     if (!docId) return setUrlError('Paste the link to a Google Doc (docs.google.com/document/d/…).')
     setUrlError('')
     run('refresh', async () => {
-      const doc = await fetchDocTree(driveToken, docId)
-      const { imagesRemoved } = await publishDoc({ url: url.trim(), docId, ...doc })
+      const doc = await fetchDocTree(driveToken, docId, setProgress)
+      const { imagesRemoved } = await publishDoc({ url: url.trim(), docId, ...doc }, setProgress)
       setShown(await getDocInfo())
       const n = doc.linked.length
+      const kept = doc.media.filter((m) => m.keep).length
       setStatus([
         `The team's Assignments page now shows "${doc.name}" as it is right now`,
-        n ? `, with the ${n === 1 ? 'doc it links to' : `${n} docs it links to`} shown on the site too.` : '.',
-        doc.media.length ? ` ${doc.media.length} image or audio file${doc.media.length === 1 ? ' was' : 's were'} copied onto the site.` : '',
+        n ? `, with the ${n === 1 ? 'page it links to' : `${n} pages it links to`} saved on the site too.` : '.',
+        doc.media.length ? ` ${doc.media.length} file${doc.media.length === 1 ? ' is' : 's are'} copied onto the site${kept ? ` (${kept} unchanged, not copied again)` : ''}.` : '',
+        doc.tooLarge ? ` ${doc.tooLarge} file${doc.tooLarge === 1 ? ' is' : 's are'} too large to copy (over 20 MB), so ${doc.tooLarge === 1 ? 'it plays' : 'they play'} through Google's viewer instead.` : '',
         doc.unreadable ? ` ${doc.unreadable} Drive link${doc.unreadable === 1 ? '' : 's'} couldn't be read with your account, so ${doc.unreadable === 1 ? 'it shows' : 'they show'} through Google's viewer without a name.` : '',
         imagesRemoved ? ' Some images were left out because a doc is too large with them.' : '',
       ].join(''))
@@ -74,7 +78,7 @@ export default function AssignmentsAdmin() {
       <h2 className="text-2xl font-semibold">Assignments</h2>
       <p className="mt-2 max-w-2xl text-sm text-white/60">
         One doc (a Google Doc, or a Word file in your Drive) is shown whole on the team's <a href="/team/assignments" className="underline">Assignments page</a>.
-        Docs it links to are shown on the site too. Images and audio up to 7 MB are copied onto the site; other Drive files (video, PDFs, sheets, folders) open in a viewer on the page, which needs each person to have access to the file in Drive (or the file shared as “anyone with the link”). After you edit any of the docs, press Refresh. Pasting a different link and refreshing replaces it.
+        Refresh saves a copy of everything it leads to: the docs and sheets it links to (and the ones those link to), and images, audio, video and PDFs up to 20 MB each. The team sees those copies, exactly as they were at the last Refresh, until you press Refresh again. Pasting a different link and refreshing replaces it all.
       </p>
       <Notice>{status}</Notice>
 
@@ -82,7 +86,7 @@ export default function AssignmentsAdmin() {
         <TextField id="assignments-doc" label="Doc link" showLabel value={url} onChange={(e) => { setUrl(e.target.value); setUrlError('') }} error={urlError} placeholder="https://docs.google.com/document/d/…" autoComplete="off" />
         <div className="flex flex-wrap items-center gap-3">
           {driveToken ? (
-            <Button type="submit" disabled={Boolean(busy) || shown === undefined}>{busy === 'refresh' ? 'Reading the docs and files…' : 'Refresh'}</Button>
+            <Button type="submit" disabled={Boolean(busy) || shown === undefined}>{busy === 'refresh' ? 'Refreshing…' : 'Refresh'}</Button>
           ) : (
             <>
               <Button onClick={connect} disabled={Boolean(busy)}>{busy === 'drive' ? 'Opening Google…' : 'Connect Google Drive'}</Button>
@@ -90,8 +94,9 @@ export default function AssignmentsAdmin() {
             </>
           )}
         </div>
+        {progress && <p className="text-sm text-white/70" role="status">{progress} Keep this page open.</p>}
         <p className="text-sm text-white/50">
-          {shown === undefined ? 'Loading…' : shown ? <>Showing <span className="text-white/80">{shown.title}</span>{shown.linked?.length > 0 && ` and ${shown.linked.length} linked doc${shown.linked.length === 1 ? '' : 's'}`}, last refreshed {shortDate(shown.updatedAt)}.</> : 'Nothing is shown to the team yet.'}
+          {shown === undefined ? 'Loading…' : shown ? <>Showing <span className="text-white/80">{shown.title}</span>{shown.linked?.length > 0 && ` and ${shown.linked.length} linked page${shown.linked.length === 1 ? '' : 's'}`}{shown.files?.length > 0 && `, ${shown.files.length} copied file${shown.files.length === 1 ? '' : 's'}`}, last refreshed {shortDate(shown.updatedAt)}.</> : 'Nothing is shown to the team yet.'}
         </p>
       </form>
     </section>
