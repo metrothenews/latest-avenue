@@ -7,6 +7,9 @@
 // - portal/assignments: { title, updatedAt, version, parts, linked: [docId] }, and the HTML itself in
 //   portal/assignments-<version>-<n> (split up, because a Firestore document holds at most 1 MiB).
 // - portal/doc-<docId> (+ parts, same shape): each linked doc.
+// - portal/file-<fileId> (+ parts): a linked image or small audio file, as a data: URL, so the team
+//   can see or hear it on the site without Google access. Other Drive files (video, PDFs, sheets, …)
+//   are shown through Google's embedded preview (components/team/FileViewer.jsx).
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db, deadline } from './team.js'
 import { DriveError } from './drive.js'
@@ -14,9 +17,14 @@ import { DriveError } from './drive.js'
 const SOURCE = doc(db, 'adminSettings', 'assignments')
 const MAIN = 'assignments'
 const linkedKey = (docId) => `doc-${docId}`
+const fileKey = (fileId) => `file-${fileId}`
 const metaRef = (key) => doc(db, 'portal', key)
 const partRef = (key, version, n) => doc(db, 'portal', `${key}-${version}-${n}`)
-const MAX_LINKED = 30 // linked docs pulled in per refresh; further ones open in Google instead
+const MAX_LINKED = 30 // linked docs pulled in per refresh; further ones use Google's preview instead
+// Images and audio up to this size are copied onto the site (as base64 it must fit in MAX_PARTS parts).
+const MAX_MEDIA_BYTES = 7 * 1024 * 1024
+const MAX_MEDIA_TOTAL = 40 * 1024 * 1024 // per refresh
+const MEDIA_TYPES = /^(image\/(png|jpeg|gif|webp)|audio\/(mpeg|mp3|mp4|x-m4a|aac|wav|x-wav|ogg))$/
 const PART_CHARS = 240_000 // under 1 MiB even if every character takes 4 bytes
 const MAX_PARTS = 40
 const GOOGLE_DOC = 'application/vnd.google-apps.document'
@@ -54,10 +62,11 @@ const KINDS = [
 const kindOf = (mimeType) => KINDS.find(([pattern]) => pattern.test(mimeType))?.[1] ?? 'File'
 
 // A Drive file: { name, kind } and, for a Google Doc or a Word file, its cleaned-up `html` (see cleanHtml).
+// An image or audio file small enough to copy (and within `budget.bytes` left) gets `media`, a data: URL.
 // A Google Doc comes from Google's HTML export; a Word file is converted in the browser by mammoth.
-async function fetchFile(token, fileId) {
+async function fetchFile(token, fileId, budget = { bytes: 0 }) {
   const api = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`
-  const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType&supportsAllDrives=true`)).json()
+  const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType,size&supportsAllDrives=true`)).json()
   const file = { name: meta.name, kind: kindOf(meta.mimeType), mimeType: meta.mimeType }
   if (meta.mimeType === GOOGLE_DOC) {
     const [html, markdown] = await Promise.all([
@@ -73,6 +82,15 @@ async function fetchFile(token, fileId) {
     const { value } = await mammoth.convertToHtml({ arrayBuffer: buffer }, { ignoreEmptyParagraphs: false, styleMap: ['u => u', 'strike => s'] })
     file.name = meta.name.replace(/\.docx$/i, '')
     file.html = cleanHtml(value)
+  } else if (MEDIA_TYPES.test(meta.mimeType) && Number(meta.size) <= Math.min(MAX_MEDIA_BYTES, budget.bytes)) {
+    budget.bytes -= Number(meta.size)
+    const blob = await (await driveFetch(token, `${api}?alt=media&supportsAllDrives=true`)).blob()
+    file.media = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result.replace(/^data:[^;,]*/, `data:${meta.mimeType}`))
+      reader.onerror = () => reject(new Error(`Couldn't read "${meta.name}".`))
+      reader.readAsDataURL(blob)
+    })
   }
   return file
 }
@@ -110,7 +128,8 @@ const driveIdsIn = (html) => [...new Set([...new DOMParser().parseFromString(htm
 // Prepares every link to be shown as a button (components/team/DocContent.jsx):
 // - a bare address becomes the Drive file's name, or a short description of where it goes;
 // - data-kind says what it is (Doc, Video, Audio, …; "Link" for other websites);
-// - data-doc marks a doc that was pulled in (its Drive ID, or "main"), so it opens inside the site.
+// - data-doc marks a doc that was pulled in (its Drive ID, or "main"), so it opens inside the site;
+// - data-media marks an image or audio file that was copied onto the site (its Drive ID).
 // `files`: Map of Drive file ID → { name, kind, html? } (null when Drive wouldn't show it).
 // `rootId`: the assignments doc itself, which a linked doc may point back to.
 function labelLinks(html, files, rootId) {
@@ -127,17 +146,20 @@ function labelLinks(html, files, rootId) {
     a.setAttribute('data-kind', file?.kind ?? (id ? (/\/document\//.test(href) ? 'Doc' : 'Drive') : href.startsWith('mailto:') ? 'Email' : 'Link'))
     // A link back to the assignments doc itself goes to the Assignments page ("main").
     if (file?.html !== undefined) a.setAttribute('data-doc', id === rootId ? 'main' : id)
+    if (file?.media) a.setAttribute('data-media', id)
   }
   return page.body.innerHTML
 }
 
 // Reads the doc and, following its links, every Google Doc or Word file it leads to (up to
-// MAX_LINKED). Returns { name, html, linked: [{ id, name, html }], unreadable: number of Drive links
-// that couldn't be read }. Links to anything that isn't a doc keep pointing at Google.
+// MAX_LINKED), plus the images and small audio files they link to. Returns { name, html,
+// linked: [{ id, name, html }], media: [{ id, name, dataUrl }], unreadable: number of Drive links
+// that couldn't be read }.
 export async function fetchDocTree(token, docId) {
   const root = await fetchFile(token, docId)
   if (root.html === undefined) throw new DriveError(`That file is a ${root.mimeType}. Use a Google Doc or a Word (.docx) file.`, 'other')
   const files = new Map([[docId, root]])
+  const budget = { bytes: MAX_MEDIA_TOTAL }
   let unreadable = 0
   let docs = 1
   let queue = [docId]
@@ -146,7 +168,7 @@ export async function fetchDocTree(token, docId) {
     for (const id of queue) {
       const ids = driveIdsIn(files.get(id).html).filter((linkId) => !files.has(linkId))
       ids.forEach((linkId) => files.set(linkId, null)) // claimed, so two docs linking to it fetch it once
-      const fetched = await Promise.all(ids.map((linkId) => fetchFile(token, linkId).catch((err) => {
+      const fetched = await Promise.all(ids.map((linkId) => fetchFile(token, linkId, budget).catch((err) => {
         if (err.kind === 'auth') throw err
         unreadable++
         return null
@@ -164,7 +186,8 @@ export async function fetchDocTree(token, docId) {
   }
   const linked = [...files].filter(([id, file]) => id !== docId && file?.html !== undefined)
     .map(([id, file]) => ({ id, name: file.name, html: labelLinks(file.html, files, docId) }))
-  return { name: root.name, html: labelLinks(root.html, files, docId), linked, unreadable }
+  const media = [...files].filter(([, file]) => file?.media).map(([id, file]) => ({ id, name: file.name, dataUrl: file.media }))
+  return { name: root.name, html: labelLinks(root.html, files, docId), linked, media, unreadable }
 }
 
 // --- Cleaning the HTML ---
@@ -281,11 +304,12 @@ export async function getSource() {
   return snap.exists() ? snap.data() : null
 }
 
-// Saves one doc's HTML under portal/<key> (+ parts), replacing the version before it.
+// Saves one doc's HTML (or a media file's data: URL) under portal/<key> (+ parts), replacing the
+// version before it.
 async function store(key, { title, html }, extra = {}) {
   let body = html
   let imagesRemoved = false
-  if (body.length > PART_CHARS * MAX_PARTS) {
+  if (body.length > PART_CHARS * MAX_PARTS && !body.startsWith('data:')) {
     body = withoutImages(body)
     imagesRemoved = true
   }
@@ -294,7 +318,8 @@ async function store(key, { title, html }, extra = {}) {
   const version = Date.now().toString(36)
   const parts = Math.max(1, Math.ceil(body.length / PART_CHARS))
   // Parts first, then the entry that points at them, so a reader never sees half of a new version.
-  for (let n = 0; n < parts; n++) await deadline(setDoc(partRef(key, version, n), { html: body.slice(n * PART_CHARS, (n + 1) * PART_CHARS) }), 60)
+  const writePart = (n) => deadline(setDoc(partRef(key, version, n), { html: body.slice(n * PART_CHARS, (n + 1) * PART_CHARS) }), 120)
+  for (let n = 0; n < parts; n += 4) await Promise.all([n, n + 1, n + 2, n + 3].filter((i) => i < parts).map(writePart))
   await deadline(setDoc(metaRef(key), { title, updatedAt: new Date().toISOString(), version, parts, ...extra }))
   for (let n = 0; n < (previous?.parts ?? 0); n++) await deadline(deleteDoc(partRef(key, previous.version, n))).catch(() => {})
   return imagesRemoved
@@ -308,14 +333,17 @@ async function remove(key) {
 
 // Saves a fetchDocTree() result as what the team sees, replacing whatever was there.
 // Returns { imagesRemoved }.
-export async function publishDoc({ url, docId, name, html, linked }) {
-  const before = (await deadline(getDoc(metaRef(MAIN)))).data()?.linked ?? []
+export async function publishDoc({ url, docId, name, html, linked, media }) {
+  const previous = (await deadline(getDoc(metaRef(MAIN)))).data()
+  const before = previous?.linked ?? []
+  for (const m of media) await store(fileKey(m.id), { title: m.name, html: m.dataUrl })
   // Linked docs first, so the main doc's buttons never lead to a page that isn't there yet.
   const removed = []
   for (const l of linked) removed.push(await store(linkedKey(l.id), { title: l.name, html: l.html }))
-  removed.push(await store(MAIN, { title: name, html }, { linked: linked.map((l) => l.id) }))
+  removed.push(await store(MAIN, { title: name, html }, { linked: linked.map((l) => l.id), files: media.map((m) => m.id) }))
   await deadline(setDoc(SOURCE, { url, docId }))
   for (const id of before.filter((old) => !linked.some((l) => l.id === old))) await remove(linkedKey(id)).catch(() => {})
+  for (const id of (previous?.files ?? []).filter((old) => !media.some((m) => m.id === old))) await remove(fileKey(id)).catch(() => {})
   return { imagesRemoved: removed.some(Boolean) }
 }
 
@@ -338,3 +366,20 @@ export const getAssignmentsDoc = () => load(MAIN)
 
 // A doc the assignments doc links to: { title, updatedAt, html }, or null if it wasn't pulled in.
 export const getLinkedDoc = (docId) => (/^[\w-]{20,}$/.test(docId) ? load(linkedKey(docId)) : Promise.resolve(null))
+
+// An image or audio file copied onto the site: { title, dataUrl }, or null if it wasn't.
+export async function getStoredFile(fileId) {
+  if (!/^[\w-]{20,}$/.test(fileId)) return null
+  const file = await load(fileKey(fileId))
+  return file && /^data:(image|audio)\//.test(file.html) ? { title: file.title, dataUrl: file.html } : null
+}
+
+// Google's embeddable preview for a Drive link, so it can be shown inside the site, or null.
+export function drivePreviewUrl(href) {
+  const id = driveIdFromLink(href)
+  if (!id) return null
+  const path = new URL(href).pathname
+  if (path.includes('/folders/')) return `https://drive.google.com/embeddedfolderview?id=${id}#list`
+  const app = path.match(/^\/(document|spreadsheets|presentation)\//)?.[1]
+  return app ? `https://docs.google.com/${app}/d/${id}/preview` : `https://drive.google.com/file/d/${id}/preview`
+}

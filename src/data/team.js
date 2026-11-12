@@ -24,6 +24,8 @@ export const team = {
     updated: 'Updated',
     emptyDoc: 'This doc is empty.',
     back: 'Assignments',
+    noAccess: "Can't see it? It needs your Google account to have access to this file: ask {founder} to share it with you.",
+    openInGoogle: 'Open in Google instead',
     missingDoc: "This doc isn't available here. It may have been removed from the assignments.",
     loadFailed: "Couldn't load assignments. Check your connection and reload.",
   },
