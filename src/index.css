@@ -47,7 +47,20 @@ body::before {
   .doc-content h2 { @apply mt-8 text-2xl font-bold tracking-tight text-white; }
   .doc-content h3 { @apply mt-6 text-xl font-semibold text-white; }
   .doc-content h4, .doc-content h5, .doc-content h6 { @apply mt-6 font-semibold text-white; }
-  .doc-content a { @apply break-all text-white underline decoration-white/40 hover:decoration-white; }
+  /* Every link is a pill button, like Button's "secondary". data-kind (Doc, Video, …) is a small
+     label in front; the mark after it says whether it opens here (›) or in a new tab (↗). */
+  .doc-content a {
+    @apply my-0.5 inline-flex max-w-full items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 align-middle text-sm font-semibold text-white no-underline hover:bg-white/10;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    overflow-wrap: anywhere;
+  }
+  .doc-content a[data-kind]::before {
+    content: attr(data-kind);
+    @apply shrink-0 text-[10px] font-semibold uppercase tracking-widest text-white/50;
+  }
+  .doc-content a::after { content: '↗'; @apply shrink-0 text-white/50; }
+  .doc-content a[data-doc]::after { content: '›'; }
+  .doc-content a :is(strong, b, em, u) { font: inherit; text-decoration: none; }
   .doc-content ul { @apply mt-2 list-disc pl-6; }
   .doc-content ol { @apply mt-2 list-decimal pl-6; }
   .doc-content li { @apply mt-1 pl-1; }

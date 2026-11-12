@@ -22,7 +22,9 @@ export const team = {
     title: 'Assignments',
     none: 'No assignments have been posted yet.',
     updated: 'Updated',
-    emptyDoc: 'The assignments doc is empty.',
+    emptyDoc: 'This doc is empty.',
+    back: 'Assignments',
+    missingDoc: "This doc isn't available here. It may have been removed from the assignments.",
     loadFailed: "Couldn't load assignments. Check your connection and reload.",
   },
   messages: {

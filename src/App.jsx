@@ -64,7 +64,7 @@ export default function App() {
                 <Route path="/team" element={<Team />} />
                 <Route path="/team/chat" element={<TeamMessages />} />
                 <Route path="/team/assignments" element={<TeamAssignments />} />
-                <Route path="/team/assignments/:id" element={<Navigate to="/team/assignments" replace />} />
+                <Route path="/team/assignments/:docId" element={<TeamAssignments />} />
               </Route>
             </Route>
           </Route>

@@ -126,7 +126,7 @@ src/
     global/
       Round.jsx             one round of the /global game: outline, guess box, distance + direction hints
     team/
-      DocContent.jsx        shows the assignments doc's saved HTML, sanitized (DOMPurify), styled by .doc-content in index.css
+      DocContent.jsx        shows a doc's saved HTML, sanitized (DOMPurify), styled by .doc-content in index.css; links are buttons
       TeamAccess.jsx        layout route: sign-in and team-list check for /team pages; useTeamMember() → { email, name, role }
       Conversation.jsx      one chat: live message list + the box to write in
     admin/
@@ -150,7 +150,7 @@ src/
     Analytics.jsx           /analytics: Meta Ads numbers at a glance (owner only; see Analytics)
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
-    TeamAssignments.jsx     /team/assignments: the assignments doc, whole, as one page (see Team assignments)
+    TeamAssignments.jsx     /team/assignments: the assignments doc, whole; /team/assignments/<docId>: a doc it links to (see Team assignments)
     TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
@@ -196,7 +196,7 @@ Defined in `src/App.jsx`.
 | `/analytics` | Analytics: Meta Ads at a glance (owner only) | AdminLayout | admin header, dashboard |
 | `/admin/team` | Admin: team list and welcome message (owner only) | AdminLayout | admin header and dashboard ("Admin") |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
-| `/team/assignments` | Team assignments: one doc shown whole (people on the team list) | TeamLayout | team portal header |
+| `/team/assignments`, `/team/assignments/:docId` | Team assignments: one doc shown whole, and the docs it links to (people on the team list) | TeamLayout | team portal header; links inside the docs |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
@@ -410,11 +410,13 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 **One doc, shown whole.** Sam pastes one doc link in the **Assignments** section of `/admin/team` and presses **Refresh**; the doc as it is at that moment appears, complete, as one scrolling page under **Assignments** in the team portal (`/team/assignments`). Everyone on the team sees the same page. Deliberately simple for now: no splitting into separate assignments and no per-person assigning (an earlier version did both and was replaced on 2026-11-12).
 
 - **One link at a time:** pasting a different link and pressing Refresh replaces what's shown. The link is remembered.
+- **Linked docs open on the site.** On Refresh, every Google Doc or Word file the assignments doc links to is pulled in too (and the docs *those* link to, up to 30 in all) and shown the same way at `/team/assignments/<Drive file ID>`, with a "‹ Assignments" link back. A linked doc that is no longer linked is removed from the site on the next Refresh. Editing a linked doc also needs a Refresh to show.
+- **Links are buttons.** Every link is a pill button in the site's style (`.doc-content a` in `index.css`). A bare address is replaced by the Drive file's name (or, for other sites, the site's name); link text you wrote yourself is kept. A small label says what it is (Doc, Video, Audio, Image, Sheet, Folder, PDF, Link…). Docs shown on the site end in `›`; everything else ends in `↗` and opens in a new tab. **Only docs are shown on the site:** videos, audio, images, sheets and folders still open in Google Drive, so the team needs Drive access to those files. A Drive link Sam's account can't read keeps a generic label ("Drive file") and opens in Google; the Refresh message counts these.
 - **Updating:** the page changes only when Sam presses **Refresh** (after editing the doc). There's no automatic sync (it would need a server). A failed refresh leaves the page as it was.
 - **Reading the doc:** needs a Drive connection (the same read-only one as `/admin/drive`; "Connect Google Drive" appears when there isn't one). A **Google Doc** is read through Google's HTML export; a **Word file (.docx) stored in Drive** (links ending `rtpof=true` are usually these) is converted in the browser by mammoth. Other file types are refused.
 - **What carries over:** paragraphs and blank lines, **bold**, *italic*, underline, strikethrough, headings, bulleted and numbered lists (with nesting), links, tables, centred/right alignment and images. **Not** fonts, text sizes or colours: the page uses the site's own dark style so it stays readable. `cleanHtml()` in `lib/assignments.js` does this (Google's export keeps formatting in CSS classes, which it resolves into real tags; it also unwraps Google's redirect links).
 - **Safety:** only plain formatting tags are kept when importing, and the HTML is sanitized again with DOMPurify when shown (`components/team/DocContent.jsx`), so a doc can't inject scripts.
-- **Storage (Firestore):** `adminSettings/assignments` = `{ url, docId }` (owner only); `portal/assignments` = `{ title, updatedAt, version, parts }` and the HTML in `portal/assignments-<version>-<n>` (split into parts because a Firestore document holds at most 1 MiB; a very large doc loses its images, and the refresh message says so). The existing `portal/{doc}` rule lets team members read these, so **this needed no rules change**.
+- **Storage (Firestore):** `adminSettings/assignments` = `{ url, docId }` (owner only); `portal/assignments` = `{ title, updatedAt, version, parts, linked: [docId] }` and the HTML in `portal/assignments-<version>-<n>`; each linked doc the same way under `portal/doc-<docId>` (split into parts because a Firestore document holds at most 1 MiB; a very large doc loses its images, and the refresh message says so). The existing `portal/{doc}` rule lets team members read these, so **this needed no rules change**.
 - Left over from the earlier version and unused: the `assignments` collection and its rule in `firestore.rules`. Harmless; delete the collection in the Firebase console if you like.
 - `mammoth` loads only when refreshing from a Word file; `dompurify` only on the assignments page.
 
@@ -584,7 +586,7 @@ npm run dev       # then check in the browser:
 - `/admin/team`: add a member (a bad email is rejected), remove one, save the welcome message; reload and both are still there. That member can then open `/team` and is sent to `/login` from `/admin`
 - `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/analytics` (owner): connect Meta; totals, chart and Top campaigns load; clicking a total or the dropdown changes the chart; changing the date range reloads everything; a campaign opens its own view and ‹ goes back; "Continue with Facebook" comes back to `/analytics`. At phone width the admin tabs sit on a second row that scrolls sideways
-- `/admin/team` → Assignments (owner, Drive connected): paste a doc link, Refresh; "Showing … last refreshed …" appears. In `/team` → Assignments the whole doc shows as one page with its bold text, blank lines, links and lists. Edit the doc, Refresh, reload the team page: the change is there
+- `/admin/team` → Assignments (owner, Drive connected): paste a doc link, Refresh; "Showing … and N linked docs, last refreshed …" appears. In `/team` → Assignments the whole doc shows as one page with its bold text, blank lines and lists, and its links as buttons. A Doc button (›) opens that doc on the site with "‹ Assignments" to go back; a Video or Audio button (↗) opens Drive in a new tab. Edit a doc, Refresh, reload the team page: the change is there
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

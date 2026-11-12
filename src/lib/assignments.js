@@ -1,16 +1,22 @@
 // Team assignments: ONE doc (a Google Doc, or a Word file in Drive) shown whole, with its formatting,
 // on /team/assignments. The owner sets the link at /admin/team and presses Refresh to pull the
 // doc's current contents; they are saved to Firestore as cleaned-up HTML for the team to read.
+// Docs that the doc links to are pulled in the same way and open inside the site
+// (/team/assignments/<docId>); every link is shown as a button.
 // - adminSettings/assignments: { url, docId } (owner only): the doc's link.
-// - portal/assignments: { title, updatedAt, version, parts }, and the HTML itself in
+// - portal/assignments: { title, updatedAt, version, parts, linked: [docId] }, and the HTML itself in
 //   portal/assignments-<version>-<n> (split up, because a Firestore document holds at most 1 MiB).
+// - portal/doc-<docId> (+ parts, same shape): each linked doc.
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
 import { db, deadline } from './team.js'
 import { DriveError } from './drive.js'
 
 const SOURCE = doc(db, 'adminSettings', 'assignments')
-const META = doc(db, 'portal', 'assignments')
-const part = (version, n) => doc(db, 'portal', `assignments-${version}-${n}`)
+const MAIN = 'assignments'
+const linkedKey = (docId) => `doc-${docId}`
+const metaRef = (key) => doc(db, 'portal', key)
+const partRef = (key, version, n) => doc(db, 'portal', `${key}-${version}-${n}`)
+const MAX_LINKED = 30 // linked docs pulled in per refresh; further ones open in Google instead
 const PART_CHARS = 240_000 // under 1 MiB even if every character takes 4 bytes
 const MAX_PARTS = 40
 const GOOGLE_DOC = 'application/vnd.google-apps.document'
@@ -35,11 +41,24 @@ async function driveFetch(token, url) {
   throw new DriveError(message, 'other')
 }
 
-// The doc as cleaned-up HTML (see cleanHtml): { name, html }.
+const KINDS = [
+  [/^application\/vnd\.google-apps\.document$|wordprocessingml/, 'Doc'],
+  [/^application\/vnd\.google-apps\.spreadsheet$|spreadsheetml|^text\/csv$/, 'Sheet'],
+  [/^application\/vnd\.google-apps\.presentation$|presentationml/, 'Slides'],
+  [/^application\/vnd\.google-apps\.folder$/, 'Folder'],
+  [/^video\//, 'Video'],
+  [/^audio\//, 'Audio'],
+  [/^image\//, 'Image'],
+  [/^application\/pdf$/, 'PDF'],
+]
+const kindOf = (mimeType) => KINDS.find(([pattern]) => pattern.test(mimeType))?.[1] ?? 'File'
+
+// A Drive file: { name, kind } and, for a Google Doc or a Word file, its cleaned-up `html` (see cleanHtml).
 // A Google Doc comes from Google's HTML export; a Word file is converted in the browser by mammoth.
-export async function fetchDocHtml(token, docId) {
-  const api = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(docId)}`
+async function fetchFile(token, fileId) {
+  const api = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`
   const meta = await (await driveFetch(token, `${api}?fields=id,name,mimeType&supportsAllDrives=true`)).json()
+  const file = { name: meta.name, kind: kindOf(meta.mimeType), mimeType: meta.mimeType }
   if (meta.mimeType === GOOGLE_DOC) {
     const [html, markdown] = await Promise.all([
       driveFetch(token, `${api}/export?mimeType=text%2Fhtml`).then((r) => r.text()),
@@ -47,15 +66,105 @@ export async function fetchDocHtml(token, docId) {
       driveFetch(token, `${api}/export?mimeType=text%2Fmarkdown`).then((r) => r.text()).catch(() => ''),
     ])
     const images = [...markdown.matchAll(/^\[[^\]]+\]:[ \t]*<?(data:image\/[^>\s]+)>?[ \t]*$/gm)].map((m) => m[1])
-    return { name: meta.name, html: cleanHtml(html, images) }
-  }
-  if (meta.mimeType === WORD_DOC) {
+    file.html = cleanHtml(html, images)
+  } else if (meta.mimeType === WORD_DOC) {
     const buffer = await (await driveFetch(token, `${api}?alt=media&supportsAllDrives=true`)).arrayBuffer()
     const { default: mammoth } = await import('mammoth/mammoth.browser.js')
     const { value } = await mammoth.convertToHtml({ arrayBuffer: buffer }, { ignoreEmptyParagraphs: false, styleMap: ['u => u', 'strike => s'] })
-    return { name: meta.name.replace(/\.docx$/i, ''), html: cleanHtml(value) }
+    file.name = meta.name.replace(/\.docx$/i, '')
+    file.html = cleanHtml(value)
   }
-  throw new DriveError(`That file is a ${meta.mimeType}. Use a Google Doc or a Word (.docx) file.`, 'other')
+  return file
+}
+
+// --- Links ---
+
+// The Drive file a link points to (a Doc, Sheet, file or folder link), or null for any other link.
+export function driveIdFromLink(href) {
+  try {
+    const url = new URL(href)
+    if (!/^(docs|drive)\.google\.com$/.test(url.hostname)) return null
+    return url.pathname.match(/\/(?:d|folders)\/([\w-]{20,})/)?.[1] ?? url.searchParams.get('id')?.match(/^[\w-]{20,}$/)?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+const looksLikeUrl = (text) => /^(https?:\/\/|www\.)\S+$/i.test(text.trim())
+
+// What a link's button says when the doc just shows the bare address.
+function fallbackLabel(href) {
+  try {
+    const url = new URL(href)
+    if (url.protocol === 'mailto:') return url.pathname
+    if (url.hostname === 'docs.google.com') return { document: 'Google Doc', spreadsheets: 'Google Sheet', presentation: 'Google Slides' }[url.pathname.split('/')[1]] ?? 'Google Docs'
+    if (url.hostname === 'drive.google.com') return url.pathname.includes('/folders/') ? 'Drive folder' : 'Drive file'
+    return url.hostname.replace(/^www\./, '')
+  } catch {
+    return 'Link'
+  }
+}
+
+const driveIdsIn = (html) => [...new Set([...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('a[href]')].map((a) => driveIdFromLink(a.getAttribute('href'))).filter(Boolean))]
+
+// Prepares every link to be shown as a button (components/team/DocContent.jsx):
+// - a bare address becomes the Drive file's name, or a short description of where it goes;
+// - data-kind says what it is (Doc, Video, Audio, …; "Link" for other websites);
+// - data-doc marks a doc that was pulled in (its Drive ID, or "main"), so it opens inside the site.
+// `files`: Map of Drive file ID → { name, kind, html? } (null when Drive wouldn't show it).
+// `rootId`: the assignments doc itself, which a linked doc may point back to.
+function labelLinks(html, files, rootId) {
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  for (const a of page.querySelectorAll('a')) {
+    const href = a.getAttribute('href')
+    if (!href) {
+      a.replaceWith(...a.childNodes)
+      continue
+    }
+    const id = driveIdFromLink(href)
+    const file = id ? files.get(id) : null
+    if (looksLikeUrl(a.textContent) || !a.textContent.trim()) a.textContent = file?.name ?? fallbackLabel(href)
+    a.setAttribute('data-kind', file?.kind ?? (id ? (/\/document\//.test(href) ? 'Doc' : 'Drive') : href.startsWith('mailto:') ? 'Email' : 'Link'))
+    // A link back to the assignments doc itself goes to the Assignments page ("main").
+    if (file?.html !== undefined) a.setAttribute('data-doc', id === rootId ? 'main' : id)
+  }
+  return page.body.innerHTML
+}
+
+// Reads the doc and, following its links, every Google Doc or Word file it leads to (up to
+// MAX_LINKED). Returns { name, html, linked: [{ id, name, html }], unreadable: number of Drive links
+// that couldn't be read }. Links to anything that isn't a doc keep pointing at Google.
+export async function fetchDocTree(token, docId) {
+  const root = await fetchFile(token, docId)
+  if (root.html === undefined) throw new DriveError(`That file is a ${root.mimeType}. Use a Google Doc or a Word (.docx) file.`, 'other')
+  const files = new Map([[docId, root]])
+  let unreadable = 0
+  let docs = 1
+  let queue = [docId]
+  while (queue.length) {
+    const next = []
+    for (const id of queue) {
+      const ids = driveIdsIn(files.get(id).html).filter((linkId) => !files.has(linkId))
+      ids.forEach((linkId) => files.set(linkId, null)) // claimed, so two docs linking to it fetch it once
+      const fetched = await Promise.all(ids.map((linkId) => fetchFile(token, linkId).catch((err) => {
+        if (err.kind === 'auth') throw err
+        unreadable++
+        return null
+      })))
+      fetched.forEach((file, i) => {
+        if (file?.html !== undefined && docs > MAX_LINKED) delete file.html
+        if (file?.html !== undefined) {
+          docs++
+          next.push(ids[i])
+        }
+        files.set(ids[i], file)
+      })
+    }
+    queue = next
+  }
+  const linked = [...files].filter(([id, file]) => id !== docId && file?.html !== undefined)
+    .map(([id, file]) => ({ id, name: file.name, html: labelLinks(file.html, files, docId) }))
+  return { name: root.name, html: labelLinks(root.html, files, docId), linked, unreadable }
 }
 
 // --- Cleaning the HTML ---
@@ -172,36 +281,60 @@ export async function getSource() {
   return snap.exists() ? snap.data() : null
 }
 
-// Saves the doc as what the team sees, replacing whatever was there. Returns { imagesRemoved }.
-export async function publishDoc({ url, docId, name, html }) {
+// Saves one doc's HTML under portal/<key> (+ parts), replacing the version before it.
+async function store(key, { title, html }, extra = {}) {
   let body = html
   let imagesRemoved = false
   if (body.length > PART_CHARS * MAX_PARTS) {
     body = withoutImages(body)
     imagesRemoved = true
   }
-  if (body.length > PART_CHARS * MAX_PARTS) throw new Error('This doc is too long to show on the site, even without its images.')
-  const previous = (await deadline(getDoc(META))).data()
+  if (body.length > PART_CHARS * MAX_PARTS) throw new Error(`"${title}" is too long to show on the site, even without its images.`)
+  const previous = (await deadline(getDoc(metaRef(key)))).data()
   const version = Date.now().toString(36)
   const parts = Math.max(1, Math.ceil(body.length / PART_CHARS))
   // Parts first, then the entry that points at them, so a reader never sees half of a new version.
-  for (let n = 0; n < parts; n++) await deadline(setDoc(part(version, n), { html: body.slice(n * PART_CHARS, (n + 1) * PART_CHARS) }), 60)
-  await deadline(setDoc(META, { title: name, updatedAt: new Date().toISOString(), version, parts }))
-  await deadline(setDoc(SOURCE, { url, docId }))
-  for (let n = 0; n < (previous?.parts ?? 0); n++) await deadline(deleteDoc(part(previous.version, n))).catch(() => {})
-  return { imagesRemoved }
+  for (let n = 0; n < parts; n++) await deadline(setDoc(partRef(key, version, n), { html: body.slice(n * PART_CHARS, (n + 1) * PART_CHARS) }), 60)
+  await deadline(setDoc(metaRef(key), { title, updatedAt: new Date().toISOString(), version, parts, ...extra }))
+  for (let n = 0; n < (previous?.parts ?? 0); n++) await deadline(deleteDoc(partRef(key, previous.version, n))).catch(() => {})
+  return imagesRemoved
 }
 
-// When and from what the team's page was last refreshed: { title, updatedAt } or null.
+async function remove(key) {
+  const meta = (await deadline(getDoc(metaRef(key)))).data()
+  await deadline(deleteDoc(metaRef(key)))
+  for (let n = 0; n < (meta?.parts ?? 0); n++) await deadline(deleteDoc(partRef(key, meta.version, n))).catch(() => {})
+}
+
+// Saves a fetchDocTree() result as what the team sees, replacing whatever was there.
+// Returns { imagesRemoved }.
+export async function publishDoc({ url, docId, name, html, linked }) {
+  const before = (await deadline(getDoc(metaRef(MAIN)))).data()?.linked ?? []
+  // Linked docs first, so the main doc's buttons never lead to a page that isn't there yet.
+  const removed = []
+  for (const l of linked) removed.push(await store(linkedKey(l.id), { title: l.name, html: l.html }))
+  removed.push(await store(MAIN, { title: name, html }, { linked: linked.map((l) => l.id) }))
+  await deadline(setDoc(SOURCE, { url, docId }))
+  for (const id of before.filter((old) => !linked.some((l) => l.id === old))) await remove(linkedKey(id)).catch(() => {})
+  return { imagesRemoved: removed.some(Boolean) }
+}
+
+// When and from what the team's page was last refreshed: { title, updatedAt, linked } or null.
 export async function getDocInfo() {
-  const snap = await deadline(getDoc(META))
+  const snap = await deadline(getDoc(metaRef(MAIN)))
   return snap.exists() ? snap.data() : null
 }
 
-// What the team sees: { title, updatedAt, html }, or null when no doc has been loaded yet.
-export async function getAssignmentsDoc() {
-  const meta = await getDocInfo()
-  if (!meta) return null
-  const parts = await Promise.all(Array.from({ length: meta.parts }, (_, n) => deadline(getDoc(part(meta.version, n)), 30)))
+async function load(key) {
+  const snap = await deadline(getDoc(metaRef(key)))
+  if (!snap.exists()) return null
+  const meta = snap.data()
+  const parts = await Promise.all(Array.from({ length: meta.parts }, (_, n) => deadline(getDoc(partRef(key, meta.version, n)), 30)))
   return { title: meta.title, updatedAt: meta.updatedAt, html: parts.map((p) => p.data()?.html ?? '').join('') }
 }
+
+// What the team sees: { title, updatedAt, html }, or null when no doc has been loaded yet.
+export const getAssignmentsDoc = () => load(MAIN)
+
+// A doc the assignments doc links to: { title, updatedAt, html }, or null if it wasn't pulled in.
+export const getLinkedDoc = (docId) => (/^[\w-]{20,}$/.test(docId) ? load(linkedKey(docId)) : Promise.resolve(null))
