@@ -35,6 +35,30 @@ body::before {
     @apply border-white/10 bg-black/30 backdrop-blur-md;
   }
 
+  /* latest avenue note: the board's dotted canvas, and rich text inside note cards (both the
+     editor and saved notes, whose HTML is injected and so can't carry Tailwind classes). */
+  .note-canvas {
+    background-color: #0b0b0e;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .note-content { @apply break-words leading-relaxed text-white/90; }
+  .note-content .ProseMirror { @apply outline-none; }
+  .note-content p { @apply mt-1.5 min-h-[1.4em]; }
+  .note-content h1 { @apply mt-3 text-xl font-extrabold tracking-tight text-white; }
+  .note-content h2 { @apply mt-3 text-base font-bold text-white; }
+  .note-content :is(p, h1, h2, ul, ol, blockquote, pre):first-child { @apply mt-0; }
+  .note-content ul { @apply mt-1.5 list-disc pl-5; }
+  .note-content ol { @apply mt-1.5 list-decimal pl-5; }
+  .note-content li > p { @apply mt-0; }
+  .note-content blockquote { @apply mt-1.5 border-l-2 border-white/30 pl-3 italic text-white/70; }
+  .note-content code { @apply rounded bg-white/10 px-1 py-0.5 text-[0.9em]; }
+  .note-content pre { @apply mt-1.5 overflow-x-auto rounded bg-black/40 p-3; }
+  .note-content pre code { @apply bg-transparent p-0; }
+  .note-content a { @apply underline; }
+  .note-content hr { @apply my-3 border-white/15; }
+  .note-content p.is-editor-empty:first-child::before { content: attr(data-placeholder); @apply pointer-events-none float-left h-0 text-white/30; }
+
   /* A doc shown on /team/assignments (components/team/DocContent.jsx). Its HTML is injected,
      so it can't carry Tailwind classes: the doc's own tags are styled here. */
   .doc-content {

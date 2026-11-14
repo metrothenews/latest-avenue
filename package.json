@@ -11,6 +11,9 @@
     "meta": "node scripts/meta.mjs"
   },
   "dependencies": {
+    "@tiptap/extension-placeholder": "^3.34.0",
+    "@tiptap/react": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
     "dompurify": "^3.4.17",
     "firebase": "^12.19.0",
     "mammoth": "^1.13.0",
