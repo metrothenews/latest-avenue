@@ -27,6 +27,8 @@ export const seo = {
   '/admin/team': { title: `Team admin | ${site.name}`, description },
   '/team': { title: `Team portal | ${site.name}`, description },
   '/team/assignments': { title: `Assignments | ${site.name}`, description },
+  // Also written into the built page for this address, so link previews show it (see vite.config.js).
+  '/team/crew': { title: 'Crew Login', description: `Crew sign-in for ${site.name}.`, preview: true },
   '/team/note': { title: `Note | ${site.name}`, description },
   '/team/note/*': { title: `Note | ${site.name}`, description },
   '/team/chat': { title: `Messages | ${site.name}`, description },

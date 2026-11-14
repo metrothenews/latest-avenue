@@ -13,6 +13,7 @@ import Lines from '../../components/note/Lines.jsx'
 import ContextMenu from '../../components/note/ContextMenu.jsx'
 import PdfViewer from '../../components/note/PdfViewer.jsx'
 import IconMenu from '../../components/note/IconMenu.jsx'
+import { getCrewMember } from '../../lib/crew.js'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { ensureOwnerMember, getMembership } from '../../lib/team.js'
 import {
@@ -30,9 +31,10 @@ const widthOf = (card) => (card.type === 'board' ? BOARD_CARD_WIDTH : card.w ?? 
 // Copied cards, kept while the site stays open, so they can be pasted on another board.
 let clipboard = []
 
-// One board: header, toolbar and the canvas of cards. `canEdit` is true for team members;
+// One board: header, toolbar and the canvas of cards. `member` is true for the team and the crew
+// (they may see every board, not only shared ones). `canEdit` is true for team members;
 // everyone else gets a read-only view (and only if the board is shared).
-function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
+function Board({ boardId, canEdit, member, email, signedIn, onSignIn, onSignOut }) {
   const navigate = useNavigate()
   const [board, setBoard] = useState(undefined) // undefined while loading, null if missing or private
   const [cards, setCards] = useState([])
@@ -81,9 +83,9 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   const editable = canEdit && !locked
   useEffect(() => {
     if (!readable) return
-    const stops = [watchCards(boardId, setCards, () => setError("Couldn't load this board's cards.")), watchChildren(boardId, canEdit, setChildren)]
+    const stops = [watchCards(boardId, setCards, () => setError("Couldn't load this board's cards.")), watchChildren(boardId, member, setChildren)]
     return () => stops.forEach((stop) => stop())
-  }, [boardId, readable, canEdit])
+  }, [boardId, readable, member])
 
   const parent = board?.parent
   useEffect(() => {
@@ -847,15 +849,19 @@ export default function NoteBoard() {
   const enter = () => navigate('/team/note/home', { replace: true })
   const { configured, user, loading, isOwner, signIn, signOut } = useAuth()
   const [team, setTeam] = useState(undefined) // undefined while checking
+  const [crew, setCrew] = useState(false) // on the crew list: sees every board, changes nothing
   const [signInError, setSignInError] = useState('')
 
   useEffect(() => {
     if (loading) return
+    setCrew(false)
     if (!user) return setTeam(false)
     let live = true
     setTeam(undefined)
     const lookup = isOwner ? ensureOwnerMember(user) : getMembership(user.email)
-    lookup.then((m) => live && setTeam(Boolean(m)), () => live && setTeam(false))
+    lookup
+      .then(async (m) => [Boolean(m), m ? false : Boolean(await getCrewMember(user.email))])
+      .then(([onTeam, onCrew]) => { if (live) { setCrew(onCrew); setTeam(onTeam) } }, () => live && setTeam(false))
     return () => { live = false }
   }, [user, isOwner, loading])
 
@@ -864,7 +870,7 @@ export default function NoteBoard() {
   return (
     <>
       {loading || team === undefined ? <p className="p-8 text-sm text-white/50">Loading…</p> : <Board
-        key={`${boardId}-${team}`} boardId={boardId} canEdit={team} email={user?.email} signedIn={Boolean(user)}
+        key={`${boardId}-${team}-${crew}`} boardId={boardId} canEdit={team} member={team || crew} email={user?.email} signedIn={Boolean(user)}
         onSignIn={async () => setSignInError(await signIn())} onSignOut={signOut}
       />}
       {signInError && <p className="px-4 text-center text-sm text-red-300/90" role="alert">{signInError}</p>}

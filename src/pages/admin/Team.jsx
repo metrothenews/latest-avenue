@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Button from '../../components/ui/Button.jsx'
 import TextField from '../../components/ui/TextField.jsx'
 import Notice from '../../components/ui/Notice.jsx'
+import CrewAdmin from '../../components/admin/CrewAdmin.jsx'
 import AssignmentsAdmin from '../../components/admin/AssignmentsAdmin.jsx'
 import { addMember, listMembers, removeMember, saveWelcome, getWelcome } from '../../lib/team.js'
 import { isEmail } from '../../lib/validation.js'
@@ -119,6 +120,8 @@ export default function Team() {
           </div>
         </form>
       </section>
+
+      <CrewAdmin />
 
       <section className="mt-14">
         <h2 className="text-2xl font-semibold">Welcome message</h2>

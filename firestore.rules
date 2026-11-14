@@ -21,6 +21,12 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true && onTeam(myEmail());
     }
 
+    // On the crew list (crew/{email}, managed in the Crew section of /admin/team).
+    function isCrew() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/crew/$(myEmail()));
+    }
+
     match /{document=**} {
       allow read, write: if isOwner();
     }
@@ -30,6 +36,12 @@ service cloud.firestore {
     match /teamMembers/{email} {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
       allow read: if isTeam();
+    }
+
+    // crew/{email}: one person on a project, keyed by their lowercase Google email. They can read
+    // their own entry (it holds their phone number, so nobody else's); only the owner writes or lists.
+    match /crew/{email} {
+      allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
     }
 
     // portal/{doc}: what the team portal shows (e.g. portal/welcome).
@@ -44,15 +56,16 @@ service cloud.firestore {
       allow read: if isTeam() && myEmail() in resource.data.assignees;
     }
 
-    // latest avenue note (/team/note). Team members read and write every board and card. Anyone,
+    // latest avenue note (/team/note). Team members read and write every board and card. The crew
+    // read every board, card and file, and never write. Anyone,
     // signed in or not, can read a board whose `public` is true (its read-only link, set from
     // Share) and that board's cards; they can never write.
     match /noteBoards/{boardId} {
-      allow read: if isTeam() || resource.data.public == true;
+      allow read: if isTeam() || isCrew() || resource.data.public == true;
       allow write: if isTeam();
 
       match /cards/{cardId} {
-        allow read: if isTeam() || get(/databases/$(database)/documents/noteBoards/$(boardId)).data.public == true;
+        allow read: if isTeam() || isCrew() || get(/databases/$(database)/documents/noteBoards/$(boardId)).data.public == true;
         allow write: if isTeam();
       }
     }
@@ -63,11 +76,11 @@ service cloud.firestore {
       function boardIsPublic(board) {
         return get(/databases/$(database)/documents/noteBoards/$(board)).data.public == true;
       }
-      allow read: if isTeam() || boardIsPublic(resource.data.board);
+      allow read: if isTeam() || isCrew() || boardIsPublic(resource.data.board);
       allow write: if isTeam();
 
       match /parts/{part} {
-        allow read: if isTeam() || boardIsPublic(get(/databases/$(database)/documents/noteFiles/$(fileId)).data.board);
+        allow read: if isTeam() || isCrew() || boardIsPublic(get(/databases/$(database)/documents/noteFiles/$(fileId)).data.board);
         allow write: if isTeam();
       }
     }
