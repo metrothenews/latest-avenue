@@ -11,6 +11,7 @@ import ShareDialog from '../../components/note/ShareDialog.jsx'
 import Lines from '../../components/note/Lines.jsx'
 import ContextMenu from '../../components/note/ContextMenu.jsx'
 import PdfViewer from '../../components/note/PdfViewer.jsx'
+import IconPicker from '../../components/note/IconPicker.jsx'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { ensureOwnerMember, getMembership } from '../../lib/team.js'
 import {
@@ -51,6 +52,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   const [trashOpen, setTrashOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [viewing, setViewing] = useState(null) // the PDF card open in the viewer
+  const [iconFor, setIconFor] = useState(null) // ID of the board whose icon is being chosen
   const [uploads, setUploads] = useState([]) // PDFs on their way up: [{ id, name, done (0–1) }]
   const picker = useRef(null)
   const pickAt = useRef(null) // where on the board a picked file should go
@@ -540,6 +542,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         one?.type === 'board' && { label: 'Open in new tab', onSelect: () => window.open(`/team/note/${card.boardId}`, '_blank', 'noopener') },
         one?.type === 'board' && { label: 'Copy link to this board', onSelect: () => navigator.clipboard?.writeText(`${window.location.origin}/team/note/${card.boardId}`) },
         one?.type === 'board' && { label: 'Rename', onSelect: () => setEditing(card.id) },
+        one?.type === 'board' && { label: 'Change icon', onSelect: () => setIconFor(card.boardId) },
         one?.type === 'board' && null,
         one?.type === 'file' && { label: 'Open', hint: '↵', onSelect: () => setViewing(card) },
         one?.type === 'file' && null,
@@ -575,11 +578,18 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   }
 
   // --- Keyboard ---
-  api.current = { addCards, topZ, drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection, setViewing }
+  // True while a window is open over the board (it handles its own keys, such as Esc to close).
+  const overlay = Boolean(menu || trashOpen || shareOpen || viewing || iconFor)
+  api.current = { addCards, topZ, drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection, setViewing, overlay }
   useEffect(() => {
+    // Whether a window was open when the key went down. It's noted on the way in (capture),
+    // because by the time the key reaches onKey the window may have closed itself on Esc, and
+    // that same Esc must not also deselect what's behind it.
+    let covered = false
+    const before = () => { covered = api.current.overlay || Boolean(document.querySelector('[role="dialog"], [role="menu"]')) }
     function onKey(e) {
       const a = api.current
-      if (document.querySelector('[role="dialog"], [role="menu"]')) return
+      if (covered) return
       const mod = e.metaKey || e.ctrlKey
       const key = e.key.toLowerCase()
       // Zoom works for viewers too.
@@ -611,8 +621,12 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         else a.setEditing(a.selected[0].id)
       }
     }
+    window.addEventListener('keydown', before, true)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', before, true)
+      window.removeEventListener('keydown', onKey)
+    }
   }, [canEdit])
 
   // --- Rendering ---
@@ -713,7 +727,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
             selected={selected} editor={editing ? editor : null} onDragStart={onToolDown} hintFor={hint}
             onBack={() => { finishEditing(); setSelection([]) }} onColor={setColor} onTrash={trashSelected}
             onToggleTitle={() => setField(selected[0], 'title', selected[0].title == null ? '' : null)}
-            onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)} onUpload={() => pickFile()}
+            onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)} onUpload={() => pickFile()} onIcon={() => setIconFor(selected[0].boardId)}
             onOpenTrash={() => setTrashOpen(true)} trashCount={trashed.length}
           />
         )}
@@ -758,6 +772,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         </div>
       )}
       <PdfViewer card={viewing} onClose={() => setViewing(null)} />
+      <IconPicker board={iconFor ? children.get(iconFor) ?? null : null} onChange={(fields) => run(updateBoard(iconFor, fields))} onClose={() => setIconFor(null)} />
       <TrashPanel
         open={trashOpen} onClose={() => setTrashOpen(false)} cards={trashed} children={children}
         onRestore={(id) => patch([{ id, before: { trashed: true }, after: { trashed: false } }])}

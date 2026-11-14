@@ -22,6 +22,15 @@ export const note = {
   headingPlaceholder: 'Heading',
   newBoard: 'New board',
   newColumn: 'New column',
+  iconTitle: 'Board icon',
+  iconColor: 'Icon colour',
+  iconSearch: 'Search icons (music, camera, calendar…)',
+  iconNone: 'No icon',
+  iconNoMatch: 'No icons match that.',
+  iconMore: 'Keep typing to narrow it down.',
+  iconHint: 'Search for more: there are over 1,500.',
+  iconFailed: "Couldn't load the icons. Check your connection and try again.",
+  iconCredit: 'Icons: Lucide (open source).',
   upload: 'Upload',
   uploadPdf: 'Upload a PDF',
   onlyPdf: 'Only PDF files can be added for now.',
@@ -77,3 +86,29 @@ export const colors = [
   { key: 'teal', label: 'Teal', swatch: 'bg-teal-500', card: 'bg-teal-950 border-teal-400/50', board: 'bg-teal-500', line: 'text-teal-400' },
 ]
 export const colorOf = (key) => colors.find((c) => c.key === key) ?? colors[0]
+
+// Colours for the icon drawn on a board's tile. "auto" picks white, or dark on a light tile.
+export const iconColors = [
+  { key: 'auto', label: 'Automatic', swatch: 'bg-neutral-700', text: null },
+  { key: 'white', label: 'White', swatch: 'bg-white', text: 'text-white' },
+  { key: 'black', label: 'Black', swatch: 'bg-neutral-950', text: 'text-neutral-950' },
+  { key: 'blue', label: 'Blue', swatch: 'bg-blue-400', text: 'text-blue-400' },
+  { key: 'violet', label: 'Violet', swatch: 'bg-violet-400', text: 'text-violet-400' },
+  { key: 'pink', label: 'Pink', swatch: 'bg-pink-400', text: 'text-pink-400' },
+  { key: 'red', label: 'Red', swatch: 'bg-red-400', text: 'text-red-400' },
+  { key: 'orange', label: 'Orange', swatch: 'bg-orange-400', text: 'text-orange-400' },
+  { key: 'yellow', label: 'Yellow', swatch: 'bg-yellow-300', text: 'text-yellow-300' },
+  { key: 'green', label: 'Green', swatch: 'bg-green-400', text: 'text-green-400' },
+  { key: 'teal', label: 'Teal', swatch: 'bg-teal-300', text: 'text-teal-300' },
+]
+// The icons the picker offers before anything is typed in its search box (by Lucide's names, in
+// words). Searching looks through the whole library.
+export const featuredIcons = [
+  'music', 'mic', 'headphones', 'disc 3', 'guitar', 'piano', 'drum', 'radio', 'speaker', 'podcast',
+  'play', 'video', 'film', 'clapperboard', 'camera', 'image', 'smartphone', 'monitor',
+  'calendar', 'clock', 'list todo', 'check', 'flag', 'target', 'rocket', 'lightbulb', 'sparkles', 'flame',
+  'star', 'heart', 'trophy', 'megaphone', 'dollar sign', 'chart column', 'shopping bag', 'shirt', 'package',
+  'folder', 'file text', 'book open', 'pen', 'palette', 'briefcase',
+  'users', 'mail', 'message circle', 'link', 'globe', 'map pin', 'house',
+]
+export const iconColorOf = (key) => iconColors.find((c) => c.key === key)

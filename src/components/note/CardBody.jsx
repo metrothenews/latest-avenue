@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import NoteEditor from './NoteEditor.jsx'
 import LineEdit from './LineEdit.jsx'
-import { colorOf, note } from '../../data/note.js'
+import BoardIcon from './BoardIcon.jsx'
+import { note } from '../../data/note.js'
 import { newId } from '../../lib/note.js'
 
 const NOTE_TAGS = ['p', 'h1', 'h2', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'strong', 'b', 'em', 'i', 's', 'u', 'a', 'br', 'hr']
@@ -143,11 +144,7 @@ export default function CardBody({ card, child, kids = 0, editing, canEdit, valu
   const count = child?.cardCount ?? 0
   return (
     <div className="flex flex-col items-center gap-2 text-center" data-board-card={card.boardId}>
-      <span className={`flex h-16 w-16 items-center justify-center rounded-2xl ${colorOf(child?.color).board}`} aria-hidden="true">
-        <span className="grid grid-cols-2 gap-1">
-          {[0, 1, 2, 3].map((i) => <span key={i} className={`h-2.5 w-2.5 rounded-sm ${child?.color === 'grey' ? 'bg-black/70' : 'bg-white/80'}`} />)}
-        </span>
-      </span>
+      <BoardIcon board={child} />
       {editing
         ? <LineEdit value={child?.title} field="boardTitle" valueRef={valueRef} placeholder={note.newBoard} className="text-center text-sm font-bold" />
         : <span className="max-w-full break-words text-sm font-bold">{child?.title || note.newBoard}</span>}

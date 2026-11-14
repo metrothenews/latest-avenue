@@ -1,5 +1,6 @@
 // latest avenue note: boards of cards on Firestore (see firestore.rules).
-// - noteBoards/{boardId}: { title, parent (boardId | null), color, public, cardCount, createdBy, createdAt }
+// - noteBoards/{boardId}: { title, parent (boardId | null), color, icon, iconColor, public, cardCount, createdBy, createdAt }
+//   `icon` is { name, shapes: [{ tag, …attributes }] } (the drawing itself, so showing it needs no icon library).
 //   "home" is the top-level board. A board inside another has a `board` card on its parent.
 //   `public: true` lets anyone with the link read the board (set from Share, for a board and
 //   every board inside it).
