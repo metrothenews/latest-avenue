@@ -7,6 +7,7 @@ const tools = [
   { to: '/analytics', title: 'Analytics', text: 'Your Meta Ads spend, reach, clicks and costs at a glance, per day and per campaign.' },
   { to: '/admin/team', title: 'Admin', text: 'Choose who can open the team portal and edit its welcome message.' },
   { to: '/team', title: 'Team', text: 'The team portal as your team sees it: the welcome page and messages.' },
+  { to: '/team/note', title: 'Note', text: 'Visual boards for notes, to-dos, PDFs and ideas, shared with the team.' },
 ]
 
 // Landing page for owner-only features. Add new tools as routes under /admin in App.jsx and list them here.
