@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { colorOf, note } from '../../data/note.js'
+import { note } from '../../data/note.js'
 import { HOME } from '../../lib/note.js'
 import { site } from '../../data/site.js'
 
@@ -29,14 +29,14 @@ export default function NoteHeader({ board, trail, canEdit, saving, canUndo, can
             <span key={b.id} className="flex min-w-0 items-center gap-2">
               <span className="text-white/30">/</span>
               <Link to={b.id === HOME ? '/team/note/home' : `/team/note/${b.id}`} className={crumbLink}>
-                {b.id !== HOME && <span className={`h-3 w-3 shrink-0 rounded-sm ${colorOf(b.color).board}`} aria-hidden="true" />}
+                {b.id !== HOME && <span className="h-3 w-3 shrink-0 rounded-sm bg-neutral-600" aria-hidden="true" />}
                 <span className="truncate">{b.title}</span>
               </Link>
             </span>
           ))}
           <span className="text-white/30">/</span>
           <span className="flex min-w-0 items-center gap-1.5" aria-current="page">
-            {board.id !== HOME && <span className={`h-3 w-3 shrink-0 rounded-sm ${colorOf(board.color).board}`} aria-hidden="true" />}
+            {board.id !== HOME && <span className="h-3 w-3 shrink-0 rounded-sm bg-neutral-600" aria-hidden="true" />}
             <span className="truncate">{board.title}</span>
           </span>
         </nav>

@@ -1,5 +1,7 @@
 // latest avenue note: boards of cards on Firestore (see firestore.rules).
-// - noteBoards/{boardId}: { title, parent (boardId | null), color, icon, iconColor, public, cardCount, createdBy, createdAt }
+// - noteBoards/{boardId}: { title, parent (boardId | null), theme, icon, iconColor, public, cardCount, createdBy, createdAt }
+//   `theme` is the colour of the icons on the board tiles sitting on this board (see `colors` in
+//   data/note.js; grey when unset). Everything else on a board is grey.
 //   `icon` is { name, shapes: [{ tag, …attributes }] } (the drawing itself, so showing it needs no icon library).
 //   "home" is the top-level board. A board inside another has a `board` card on its parent.
 //   `public: true` lets anyone with the link read the board (set from Share, for a board and
@@ -33,7 +35,7 @@ export const isBoardId = (id) => /^[\w-]{1,40}$/.test(id ?? '')
 export async function ensureHome(email, title) {
   const snap = await deadline(getDoc(boardRef(HOME)))
   if (snap.exists()) return
-  await deadline(setDoc(boardRef(HOME), { title, parent: null, color: 'default', public: false, cardCount: 0, createdBy: email, createdAt: new Date().toISOString() }))
+  await deadline(setDoc(boardRef(HOME), { title, parent: null, theme: 'grey', public: false, cardCount: 0, createdBy: email, createdAt: new Date().toISOString() }))
 }
 
 // Live board document: onChange(board | null). A board the viewer may not read arrives as null.
@@ -53,7 +55,7 @@ export function watchChildren(boardId, team, onChange) {
   return onSnapshot(query(collection(db, BOARDS), ...filters), (snap) => onChange(new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]))), () => onChange(new Map()))
 }
 
-// The boards above this one, top first, as far up as the viewer may read: [{ id, title, color }].
+// The boards above this one, top first, as far up as the viewer may read: [{ id, title, theme }].
 export async function ancestors(board) {
   const trail = []
   let parent = board.parent
@@ -61,7 +63,7 @@ export async function ancestors(board) {
     try {
       const snap = await deadline(getDoc(boardRef(parent)))
       if (!snap.exists()) break
-      trail.unshift({ id: snap.id, title: snap.data().title, color: snap.data().color })
+      trail.unshift({ id: snap.id, title: snap.data().title, theme: snap.data().theme })
       parent = snap.data().parent
     } catch {
       break // a private board above a shared one
@@ -93,7 +95,7 @@ export const removeCard = (boardId, id) => deadline(deleteDoc(cardRef(boardId, i
 // A new board inside `parent`, plus its card on the parent. Returns the card.
 export async function createBoard(parent, card, title, email) {
   const batch = writeBatch(db)
-  batch.set(boardRef(card.boardId), { title, parent: parent.id, color: 'default', public: Boolean(parent.public), cardCount: 0, createdBy: email, createdAt: new Date().toISOString() })
+  batch.set(boardRef(card.boardId), { title, parent: parent.id, theme: 'grey', public: Boolean(parent.public), cardCount: 0, createdBy: email, createdAt: new Date().toISOString() })
   const { id, ...data } = card
   batch.set(cardRef(parent.id, id), data)
   await deadline(batch.commit())

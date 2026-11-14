@@ -1,5 +1,4 @@
 import { createElement } from 'react'
-import { colorOf, iconColorOf } from '../../data/note.js'
 
 // Only plain SVG shapes and their geometry are drawn, whatever is stored.
 const TAGS = new Set(['path', 'circle', 'rect', 'line', 'ellipse', 'polyline', 'polygon'])
@@ -17,13 +16,12 @@ export function IconShapes({ shapes, className = 'h-6 w-6' }) {
   )
 }
 
-// A board's tile: a rounded square in the board's colour, holding its icon (or four small squares
-// when it has none). `board`: { color, icon: { name, shapes } | null, iconColor }.
-export default function BoardIcon({ board, className = 'h-16 w-16 rounded-2xl', glyph = 'h-8 w-8' }) {
-  const light = board?.color === 'grey'
-  const tint = iconColorOf(board?.iconColor)?.text ?? (light ? 'text-neutral-900' : 'text-white')
+// A board's tile: a dark rounded square holding the board's icon (or four small squares when it
+// has none), drawn in `tint`: the theme colour of the board the tile sits on.
+// `board`: { icon: { name, shapes } | null }.
+export default function BoardIcon({ board, tint = 'text-white', className = 'h-16 w-16 rounded-2xl', glyph = 'h-8 w-8' }) {
   return (
-    <span className={`flex shrink-0 items-center justify-center ${className} ${colorOf(board?.color).board} ${tint}`} aria-hidden="true">
+    <span className={`flex shrink-0 items-center justify-center bg-neutral-900 ${className} ${tint}`} aria-hidden="true">
       {board?.icon?.shapes?.length
         ? <IconShapes shapes={board.icon.shapes} className={glyph} />
         : <span className="grid grid-cols-2 gap-1 opacity-80">{[0, 1, 2, 3].map((i) => <span key={i} className="h-2.5 w-2.5 rounded-sm bg-current" />)}</span>}

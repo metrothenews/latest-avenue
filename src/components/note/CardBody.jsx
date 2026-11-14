@@ -98,10 +98,11 @@ function TodoView({ card, canEdit, onToggle }) {
   )
 }
 
-// The inside of a card, by type. `child` is the board a board card stands for; `kids` is how many
+// The inside of a card, by type. `child` is the board a board card stands for and `tint` the
+// colour of its icon; `kids` is how many
 // cards a column holds (the board draws them under this header).
 // While `editing`, the card's editor puts its current value in `valueRef` for the board to save.
-export default function CardBody({ card, child, kids = 0, editing, canEdit, valueRef, onEditor, onEditorChange, onToggleTodo }) {
+export default function CardBody({ card, child, tint, kids = 0, editing, canEdit, valueRef, onEditor, onEditorChange, onToggleTodo }) {
   if (card.type === 'column') {
     return (
       <div className="px-3 pb-1 pt-3 text-center">
@@ -144,7 +145,7 @@ export default function CardBody({ card, child, kids = 0, editing, canEdit, valu
   const count = child?.cardCount ?? 0
   return (
     <div className="flex flex-col items-center gap-2 text-center" data-board-card={card.boardId}>
-      <BoardIcon board={child} />
+      <BoardIcon board={child} tint={tint} />
       {editing
         ? <LineEdit value={child?.title} field="boardTitle" valueRef={valueRef} placeholder={note.newBoard} className="text-center text-sm font-bold" />
         : <span className="max-w-full break-words text-sm font-bold">{child?.title || note.newBoard}</span>}

@@ -178,7 +178,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     const base = {
       id: newId(), type, x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)),
       w: { board: BOARD_CARD_WIDTH, column: COLUMN_WIDTH }[type] ?? CARD_WIDTH, z: topZ() + 1,
-      color: 'default', trashed: false, createdBy: email, createdAt: new Date().toISOString(),
+      trashed: false, createdBy: email, createdAt: new Date().toISOString(),
     }
     const cx = base.x + base.w / 2
     const card = {
@@ -210,7 +210,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         const card = {
           id: newId(), type: 'file', fileId, name: file.name, size: file.size, pages: preview.pages, thumb: preview.thumb,
           x: Math.max(0, Math.round(x + i * 24)), y: Math.max(0, Math.round(y + i * 24)), w: CARD_WIDTH, z: api.current.topZ() + 1,
-          color: 'default', trashed: false, createdBy: email, createdAt: new Date().toISOString(),
+          trashed: false, createdBy: email, createdAt: new Date().toISOString(),
         }
         api.current.addCards([card])
       } catch (err) {
@@ -293,10 +293,6 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     }))
   }
 
-  function setColor(color) {
-    selected.filter((c) => c.type === 'board').forEach((c) => run(updateBoard(c.boardId, { color })))
-    patch(selected.filter((c) => c.type !== 'board' && c.color !== color).map((c) => ({ id: c.id, before: { color: c.color ?? 'default' }, after: { color } })))
-  }
   const setField = (card, field, value) => patch([{ id: card.id, before: { [field]: card[field] ?? null }, after: { [field]: value } }])
   const toggleTodo = (card, itemId) => setField(card, 'items', card.items.map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)))
   const restack = (toFront) => patch(selected.map((c, i) => ({ id: c.id, before: { z: c.z ?? 0 }, after: { z: toFront ? topZ() + 1 + i : Math.min(0, ...cards.map((k) => k.z ?? 0)) - 1 - i } })))
@@ -669,6 +665,10 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   })() : null
   const dropOn = drag?.kind === 'move' ? drag.over : drag?.kind === 'end' ? drag.over : null
 
+  // Cards are always grey. The board's theme only colours the icons on its board tiles.
+  const cardLook = 'bg-neutral-900 border-white/15'
+  const tint = colorOf(board.theme).icon
+
   function renderCard(card, stacked) {
     const isSelected = selection.includes(card.id)
     const isEditing = editing === card.id
@@ -687,9 +687,9 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         style={style}
         className={[
           stacked ? '' : 'absolute', 'text-sm',
-          framed ? `rounded-md border p-4 ${stacked ? '' : 'shadow-lg shadow-black/30'} ${colorOf(card.color).card}` : '',
-          card.type === 'column' ? `rounded-lg border shadow-lg shadow-black/30 ${colorOf(card.color).card}` : '',
-          isFile ? `rounded-md border ${stacked ? '' : 'shadow-lg shadow-black/30'} ${colorOf(card.color).card}` : '',
+          framed ? `rounded-md border p-4 ${stacked ? '' : 'shadow-lg shadow-black/30'} ${cardLook}` : '',
+          card.type === 'column' ? `rounded-lg border shadow-lg shadow-black/30 ${cardLook}` : '',
+          isFile ? `rounded-md border ${stacked ? '' : 'shadow-lg shadow-black/30'} ${cardLook}` : '',
           card.type === 'heading' || card.type === 'board' ? 'rounded-md p-2' : '',
           stacked && card.type === 'board' ? 'mx-auto w-32' : '',
           isSelected ? 'outline outline-2 outline-white' : dropOn === card.id ? 'outline outline-2 outline-dashed outline-white/70' : '',
@@ -706,7 +706,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         }}
       >
         <CardBody
-          card={card} child={children.get(card.boardId)} kids={kids.length} editing={isEditing} canEdit={canEdit} valueRef={valueRef}
+          card={card} child={children.get(card.boardId)} tint={tint} kids={kids.length} editing={isEditing} canEdit={canEdit} valueRef={valueRef}
           onEditor={setEditor} onEditorChange={() => redraw((n) => n + 1)} onToggleTodo={(itemId) => toggleTodo(card, itemId)}
         />
         {card.type === 'column' && (
@@ -743,7 +743,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         {canEdit && (
           <NoteToolbar
             selected={selected} editor={editing ? editor : null} onDragStart={onToolDown} hintFor={hint}
-            onBack={() => { finishEditing(); setSelection([]) }} onColor={setColor} onTrash={trashSelected}
+            onBack={() => { finishEditing(); setSelection([]) }} theme={board.theme} onTheme={(theme) => run(updateBoard(boardId, { theme }))} onTrash={trashSelected}
             onToggleTitle={() => setField(selected[0], 'title', selected[0].title == null ? '' : null)}
             onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)} onUpload={() => pickFile()} onEditBoard={() => editBoard(selected[0])}
             onOpenTrash={() => setTrashOpen(true)} trashCount={trashed.length}
