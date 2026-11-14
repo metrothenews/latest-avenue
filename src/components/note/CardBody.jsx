@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import NoteEditor from './NoteEditor.jsx'
+import LineEdit from './LineEdit.jsx'
 import { colorOf, note } from '../../data/note.js'
 import { newId } from '../../lib/note.js'
 
@@ -19,21 +20,6 @@ function NoteText({ html }) {
   }, [html])
   if (!safe) return <p className="text-white/30">{note.notePlaceholder}</p>
   return <div className="note-content" dangerouslySetInnerHTML={{ __html: safe }} />
-}
-
-// One-line text field that saves through valueRef (used by headings and board names).
-function LineEdit({ value, field, valueRef, placeholder, className }) {
-  const [text, setText] = useState(value ?? '')
-  const input = useRef(null)
-  useEffect(() => {
-    input.current.focus()
-    input.current.select()
-  }, [])
-  useEffect(() => {
-    valueRef.current = () => ({ [field]: text.trim() })
-    return () => { valueRef.current = null }
-  }, [text, field, valueRef])
-  return <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className={`w-full bg-transparent outline-none placeholder:text-white/50 ${className}`} />
 }
 
 // A to-do list being edited: a field per task. Enter adds the next one; Backspace on an empty one removes it.
@@ -111,9 +97,20 @@ function TodoView({ card, canEdit, onToggle }) {
   )
 }
 
-// The inside of a card, by type. `child` is the board a board card stands for.
+// The inside of a card, by type. `child` is the board a board card stands for; `kids` is how many
+// cards a column holds (the board draws them under this header).
 // While `editing`, the card's editor puts its current value in `valueRef` for the board to save.
-export default function CardBody({ card, child, editing, canEdit, valueRef, onEditor, onEditorChange, onToggleTodo }) {
+export default function CardBody({ card, child, kids = 0, editing, canEdit, valueRef, onEditor, onEditorChange, onToggleTodo }) {
+  if (card.type === 'column') {
+    return (
+      <div className="px-3 pb-1 pt-3 text-center">
+        {editing
+          ? <LineEdit value={card.title} field="title" valueRef={valueRef} placeholder={note.newColumn} className="text-center font-bold" />
+          : <p className={`break-words font-bold ${card.title ? '' : 'text-white/50'}`}>{card.title || note.newColumn}</p>}
+        <p className="text-xs text-white/50">{kids} card{kids === 1 ? '' : 's'}</p>
+      </div>
+    )
+  }
   if (card.type === 'note') {
     return editing ? <NoteEditor html={card.html} valueRef={valueRef} onEditor={onEditor} onChange={onEditorChange} /> : <NoteText html={card.html} />
   }
