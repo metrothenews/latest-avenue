@@ -23,6 +23,8 @@ const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const TeamMessages = lazy(() => import('./pages/TeamMessages.jsx'))
+const NoteHome = lazy(() => import('./pages/note/NoteHome.jsx'))
+const NoteBoard = lazy(() => import('./pages/note/NoteBoard.jsx'))
 const TeamAssignments = lazy(() => import('./pages/TeamAssignments.jsx'))
 // The hidden game loads lazily too: its country outlines are a large file.
 const Global = lazy(() => import('./pages/Global.jsx'))
@@ -59,6 +61,9 @@ export default function App() {
               </Route>
             </Route>
             {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in TeamAccess). */}
+            {/* latest avenue note: boards the team edits; shared boards are readable by anyone with the link. */}
+            <Route path="/team/note" element={<NoteHome />} />
+            <Route path="/team/note/:boardId" element={<NoteBoard />} />
             <Route element={<TeamLayout />}>
               <Route element={<TeamAccess />}>
                 <Route path="/team" element={<Team />} />

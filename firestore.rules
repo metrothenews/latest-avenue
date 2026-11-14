@@ -44,6 +44,19 @@ service cloud.firestore {
       allow read: if isTeam() && myEmail() in resource.data.assignees;
     }
 
+    // latest avenue note (/team/note). Team members read and write every board and card. Anyone,
+    // signed in or not, can read a board whose `public` is true (its read-only link, set from
+    // Share) and that board's cards; they can never write.
+    match /noteBoards/{boardId} {
+      allow read: if isTeam() || resource.data.public == true;
+      allow write: if isTeam();
+
+      match /cards/{cardId} {
+        allow read: if isTeam() || get(/databases/$(database)/documents/noteBoards/$(boardId)).data.public == true;
+        allow write: if isTeam();
+      }
+    }
+
     // Team messaging. chats/team is the shared chat; chats/{a}|{b} is a private conversation
     // between two team members (emails in alphabetical order, also stored in `members`).
     // A chat document only holds who is in it and when the last message was sent.

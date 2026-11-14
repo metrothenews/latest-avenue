@@ -125,6 +125,13 @@ src/
       RunLog.jsx            step-by-step progress of a run
     global/
       Round.jsx             one round of the /global game: outline, guess box, distance + direction hints
+    note/
+      NoteHeader.jsx        breadcrumbs, undo / redo, save status, board title, Share
+      NoteToolbar.jsx       left toolbar: card types to drag out; options for the selection; text formatting while editing
+      CardBody.jsx          the inside of a card by type (note, to-do list, heading, board icon), shown and edited
+      NoteEditor.jsx        rich text editor for note cards (TipTap)
+      TrashPanel.jsx        a board's trashed cards: restore, empty
+      ShareDialog.jsx       read-only link on / off, copy link
     team/
       DocContent.jsx        shows the assignments doc's saved HTML, sanitized (DOMPurify), styled by .doc-content in index.css
       TeamAccess.jsx        layout route: sign-in and team-list check for /team pages; useTeamMember() → { email, name, role }
@@ -151,6 +158,8 @@ src/
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
     TeamAssignments.jsx     /team/assignments: the assignments doc, whole, as one page (see Team assignments)
+    note/NoteHome.jsx       /team/note: front page of latest avenue note (placeholder until the full homepage)
+    note/NoteBoard.jsx      /team/note/:boardId: one board: canvas, dragging, selection, undo, keyboard (see latest avenue note)
     TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
@@ -168,6 +177,7 @@ src/
     analyticsFormat.js      formatValue() (money / count / percent), shortDay(), longDay()
     team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
     assignments.js          the assignments doc: read from Drive as HTML (Google export, or Word via mammoth), cleaned, stored in Firestore
+    note.js                 Firestore: note boards and their cards, live; sharing; moving cards between boards
     teamChat.js             Firestore: team messaging (chats and their messages), live updates
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
@@ -197,6 +207,8 @@ Defined in `src/App.jsx`.
 | `/admin/team` | Admin: team list and welcome message (owner only) | AdminLayout | admin header and dashboard ("Admin") |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
 | `/team/assignments` | Team assignments: one doc shown whole (people on the team list) | TeamLayout | team portal header |
+| `/team/note` | latest avenue note front page | none (full screen) | **no** (unlisted) |
+| `/team/note/home`, `/team/note/:boardId` | A note board. Team members edit; anyone with the link can view a board that has been shared | none (full screen) | team portal header ("Note") |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
@@ -241,6 +253,7 @@ The player is Spotify's official iframe embed (`open.spotify.com/embed/artist/<i
 | `global.js` | `globalGame` | copy and settings for the /global game: rounds, guesses per round, messages and the **gift link** (`gift.url`, `gift.label`) |
 | `countries.js` | `countries`, `outlineSize` | **generated** (`npm run build:countries`): country names, centre points and SVG outlines. Do not edit by hand |
 | `analytics.js` | `analytics`, `ranges`, `metrics` | copy for /analytics, its date ranges and the metrics it can chart (label, format, which direction is better) |
+| `note.js` | `note`, `tools`, `colors` | copy for latest avenue note, the toolbar's card types and the card colours |
 | `team.js` | `team` | copy for the team portal: sign-in, nav, messaging labels and fallback welcome text (the team list, welcome message and messages themselves are in Firestore) |
 | `legal.js` | `legal` | `{ privacy, terms }`, each `{ title, updated, intro[], sections[] }`; section = `{ heading, body[], subsections[] }` |
 
@@ -402,6 +415,39 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 - **The owner can read everything in the database** (the owner rule covers all of Firestore), including other people's private chats, through the Firebase console. The portal itself only shows the owner their own chats. Tell the team if that matters.
 - Messages can only be deleted in the Firebase console (Firestore → `chats`).
 - Cost: Firestore's free tier (50,000 reads and 20,000 writes a day) is far more than a small team's chat uses.
+
+---
+
+## latest avenue note
+
+`/team/note` is a visual notes tool for the team: **boards** you lay cards out on, with boards inside boards. Its workflow is modelled on Milanote (Sam's choice), in latest avenue's own dark style; nothing of Milanote's name, wording or artwork is used. Sam's reference (a written walkthrough and 81 screenshots of Milanote) is in his Google Drive folder "milanote-reference", not in this repo.
+
+**Who can do what:** team members (the team list at `/admin/team`, plus Sam) **edit** everything. Everyone else can only **view** a board whose read-only link has been switched on (**Share** on the board). The link is the board's address (`/team/note/<id>`, a long random ID); turning it on shares that board and every board inside it, and new boards made inside inherit it. The home board (`/team/note/home`) is private unless shared. Nothing on the public site links to any of it.
+
+### What's built (phase 1)
+
+- **Home is a board.** `/team/note/home` holds your top-level boards as icons; every board works the same way. Double-click a board icon to open it (Enter also works); breadcrumbs at the top lead back up. Each icon shows how many cards are inside.
+- **Left toolbar:** drag **Note**, **To-do**, **Heading** or **Board** onto the canvas (clicking one just says "Drag me"). Double-clicking empty canvas adds a note. With cards selected the toolbar becomes their options (colour, to-do title, rename board, delete); while editing a note it becomes text formatting.
+- **Notes:** rich text (TipTap): headings, bold, italic, strikethrough, bullet and numbered lists, quotes. Typing `# `, `## `, `* `, `1. ` or `> ` at the start of a line works too.
+- **To-do lists:** Enter adds the next task, Backspace on an empty one removes it; tick boxes work without entering edit mode; optional title.
+- **Cards:** click to select, Shift-click or drag a box to select several, drag to move, drag the corner to change width, click a selected card (or double-click) to edit, Esc to stop. Drag cards onto a board icon to move them inside it.
+- **Keyboard:** Delete, arrows to nudge (Shift for 1px), ⌘/Ctrl+Z undo, Shift+⌘/Ctrl+Z redo, ⌘/Ctrl+A select all, ⌘/Ctrl+D duplicate, Enter to edit or open.
+- **Undo / redo** (also in the header) covers adding, moving, resizing, editing, colours and deleting, for this visit to the board. **Trash** (bottom of the toolbar) lists the board's deleted cards to restore, or empties it for good.
+- **Live:** several people can have a board open; changes appear for everyone, including read-only viewers. Two people editing the *same card* at once: the last save wins.
+- "Saving… / Saved" shows at the top left.
+
+### How it's stored (Firestore)
+
+- `noteBoards/{id}` = `{ title, parent, color, public, cardCount, createdBy, createdAt }`; `home` is the top board.
+- `noteBoards/{id}/cards/{cardId}` = `{ type, x, y, w, z, color, trashed, … }` with `html` (note), `title` + `items` (to-do), `text` (heading) or `boardId` (a board's icon).
+- **Security (`firestore.rules`):** team members read and write boards and cards; anyone can read a board with `public: true` and its cards; nobody else can write. **Deploy the rules** (`firebase deploy --only firestore:rules`) or nobody but Sam can use it.
+
+### Still to build
+
+2. Columns, lines and arrows between cards, right-click menus, zoom.
+3. Links, images, video and audio embeds (YouTube, Vimeo, Spotify, SoundCloud), colour swatches, comments. On the free plan images are limited to a few MB each and ordinary web links get no thumbnail preview (Sam chose to stay on the free plan for now).
+4. Live cursors, an editor link (so far only read-only links exist).
+5. Tables, long documents, sketching, export, search, templates, and the public homepage for `/team/note` (currently a one-screen placeholder).
 
 ---
 
@@ -585,6 +631,7 @@ npm run dev       # then check in the browser:
 - `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/analytics` (owner): connect Meta; totals, chart and Top campaigns load; clicking a total or the dropdown changes the chart; changing the date range reloads everything; a campaign opens its own view and ‹ goes back; "Continue with Facebook" comes back to `/analytics`. At phone width the admin tabs sit on a second row that scrolls sideways
 - `/admin/team` → Assignments (owner, Drive connected): paste a doc link, Refresh; "Showing … last refreshed …" appears. In `/team` → Assignments the whole doc shows as one page with its bold text, blank lines, links and lists. Edit the doc, Refresh, reload the team page: the change is there
+- `/team/note/home` (team member): drag a Board out, name it, double-click it; drag out a Note, a To-do and a Heading and type in each; move, resize, colour, duplicate, delete and undo them; restore from Trash; drag a card onto a board icon. Share → turn the link on → open it in a private window: the board shows with "View only", no toolbar, and nothing can be changed; turn it off and the private window says the board is private
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll

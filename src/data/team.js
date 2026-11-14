@@ -15,6 +15,7 @@ export const team = {
     { label: 'Home', to: '/team' },
     { label: 'Messages', to: '/team/chat' },
     { label: 'Assignments', to: '/team/assignments' },
+    { label: 'Note', to: '/team/note/home' },
   ],
   // Shown only to the owner, in the portal header, to get back to the admin area.
   adminLink: { label: 'Admin', to: '/admin' },
