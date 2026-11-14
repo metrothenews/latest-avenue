@@ -7,6 +7,7 @@ const icons = {
   todo: <><path d="M4 7l1.5 1.5L8 6M4 16l1.5 1.5L8 15M11 7h9M11 16h9" /></>,
   heading: <><path d="M6 5v14M18 5v14M6 12h12" /></>,
   line: <><path d="M5 19L19 5M19 5h-6M19 5v6" /></>,
+  upload: <><path d="M7 3h7l4 4v14H7zM14 3v4h4M12 17v-6M9.5 13.5L12 11l2.5 2.5" /></>,
   column: <><rect x="6" y="3" width="12" height="18" rx="2" /><path d="M9 8h6" /></>,
   arrowStart: <><path d="M20 12H5M10 7l-5 5 5 5" /></>,
   arrowEnd: <><path d="M4 12h15M14 7l5 5-5 5" /></>,
@@ -43,7 +44,7 @@ function Tool({ type, label, onDragStart, hint }) {
 
 // The left toolbar. With nothing selected it holds the card types to drag out and the trash;
 // with cards selected it shows their options; while a note is being edited, text formatting.
-export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onOpenTrash, trashCount }) {
+export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onUpload, onOpenTrash, trashCount }) {
   const [palette, setPalette] = useState(false)
   const single = selected.length === 1 ? selected[0] : null
 
@@ -105,6 +106,8 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
     content = (
       <>
         {tools.map((t) => <Tool key={t.type} {...t} onDragStart={onDragStart} hint={hintFor === t.type} />)}
+        <hr className="mx-2 my-1 border-white/10" />
+        <button type="button" onClick={onUpload} className={tile} aria-label={note.uploadPdf} title={note.uploadPdf}><Icon name="upload" />{note.upload}</button>
         <button type="button" onClick={onOpenTrash} className={`${tile} mt-auto`}>
           <Icon name="trash" />
           {note.trash}{trashCount > 0 && ` (${trashCount})`}

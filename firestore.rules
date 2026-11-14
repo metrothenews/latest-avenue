@@ -57,6 +57,21 @@ service cloud.firestore {
       }
     }
 
+    // Files on note boards (PDFs), stored as text in parts. A file can be read by whoever can read
+    // the board its card is on (`board`): team members, or anyone if that board is public.
+    match /noteFiles/{fileId} {
+      function boardIsPublic(board) {
+        return get(/databases/$(database)/documents/noteBoards/$(board)).data.public == true;
+      }
+      allow read: if isTeam() || boardIsPublic(resource.data.board);
+      allow write: if isTeam();
+
+      match /parts/{part} {
+        allow read: if isTeam() || boardIsPublic(get(/databases/$(database)/documents/noteFiles/$(fileId)).data.board);
+        allow write: if isTeam();
+      }
+    }
+
     // Team messaging. chats/team is the shared chat; chats/{a}|{b} is a private conversation
     // between two team members (emails in alphabetical order, also stored in `members`).
     // A chat document only holds who is in it and when the last message was sent.

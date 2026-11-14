@@ -111,6 +111,23 @@ export default function CardBody({ card, child, kids = 0, editing, canEdit, valu
       </div>
     )
   }
+  if (card.type === 'file') {
+    const size = card.size >= 1048576 ? `${(card.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(card.size / 1024))} KB`
+    return (
+      <div>
+        {card.thumb
+          ? <img src={card.thumb} alt="" draggable="false" className="block w-full rounded-t-md bg-white" />
+          : <div className="flex h-32 items-center justify-center rounded-t-md bg-neutral-800 text-2xl font-extrabold tracking-widest text-white/40">PDF</div>}
+        <div className="flex items-center gap-3 p-3">
+          <span className="shrink-0 rounded bg-red-500/90 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white">PDF</span>
+          <span className="min-w-0">
+            <span className="block truncate font-semibold">{card.name}</span>
+            <span className="block text-xs text-white/50">{[card.pages && `${card.pages} page${card.pages === 1 ? '' : 's'}`, size].filter(Boolean).join(' · ')}</span>
+          </span>
+        </div>
+      </div>
+    )
+  }
   if (card.type === 'note') {
     return editing ? <NoteEditor html={card.html} valueRef={valueRef} onEditor={onEditor} onChange={onEditorChange} /> : <NoteText html={card.html} />
   }
