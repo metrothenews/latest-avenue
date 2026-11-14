@@ -10,4 +10,5 @@ Key rules:
 - Keep the dark frosted-glass look (`.glass`, `.glass-bar` in `src/index.css`). Keep blue accents subtle.
 - No animations and no backend unless Sam asks.
 - Never invent stats, quotes or testimonials; use `[bracketed]` placeholders.
+- **Every page must work on a phone.** There is one site for all screens (no separate mobile site): build each page so it adapts. Before finishing, check it at phone size (about 390px wide) with touch: no sideways scrolling, every control on screen and big enough to tap, and nothing that needs hover, double-click or right-click as the only way to do it.
 - Verify with `npm run build` before finishing a change.

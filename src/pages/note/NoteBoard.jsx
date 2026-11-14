@@ -345,7 +345,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
       : (selection.includes(card.id) ? selection : [card.id])
     setSelection(next)
     if (!next.includes(card.id)) return
-    startDrag({ kind: 'move', ids: next, cardId: card.id, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, moved: false, over: null, wasAlone: !e.shiftKey && selection.length === 1 && selection[0] === card.id })
+    startDrag({ kind: 'move', ids: next, cardId: card.id, sx: e.clientX, sy: e.clientY, dx: 0, dy: 0, moved: false, over: null, touch: e.pointerType === 'touch', wasAlone: !e.shiftKey && selection.length === 1 && selection[0] === card.id })
   }
 
   function onResizeDown(e, card) {
@@ -474,8 +474,11 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     if (d.kind !== 'move') return
     const card = all.get(d.cardId)
     if (!d.moved) {
-      // A click on the one card that was already selected starts editing it.
+      // A click on the one card that was already selected starts editing it. On a touch screen,
+      // where double-tapping isn't dependable, the same second tap opens a board or a PDF.
       if (d.wasAlone && card && card.type !== 'board' && card.type !== 'file') setEditing(card.id)
+      else if (d.wasAlone && d.touch && card?.type === 'board') open(card.boardId)
+      else if (d.wasAlone && d.touch && card?.type === 'file') setViewing(card)
       return
     }
     const moving = shown.filter((c) => d.ids.includes(c.id))

@@ -4,6 +4,7 @@ import SiteLayout from './components/layout/SiteLayout.jsx'
 import AuthLayout from './components/layout/AuthLayout.jsx'
 import ScrollToHash from './components/layout/ScrollToHash.jsx'
 import PageMeta from './components/layout/PageMeta.jsx'
+import ErrorBoundary from './components/layout/ErrorBoundary.jsx'
 import Home from './pages/Home.jsx'
 import Contact from './pages/Contact.jsx'
 import Legal from './pages/Legal.jsx'
@@ -33,6 +34,7 @@ export default function App() {
     <>
       <ScrollToHash />
       <PageMeta />
+      <ErrorBoundary>
       <Suspense fallback={null}>
         <Routes>
           <Route element={<SiteLayout />}>
@@ -77,6 +79,7 @@ export default function App() {
           <Route path="/reset-password" element={<Navigate to="/login" replace />} />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     </>
   )
 }

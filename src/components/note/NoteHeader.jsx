@@ -47,8 +47,9 @@ export default function NoteHeader({ board, trail, canEdit, saving, canUndo, can
           </div>
         )}
       </div>
-      <div className="grid h-11 grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-white/5 px-3">
-        <span className="text-xs text-white/40" role="status">{canEdit ? (saving ? note.saving : note.saved) : ''}</span>
+      {/* On a phone the title takes the room that's left; on wider screens it sits in the middle. */}
+      <div className="flex h-11 items-center gap-2 border-t border-white/5 px-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:gap-3">
+        <span className="hidden text-xs text-white/40 sm:block" role="status">{canEdit ? (saving ? note.saving : note.saved) : ''}</span>
         {renamable ? (
           <input
             value={title}
@@ -56,12 +57,12 @@ export default function NoteHeader({ board, trail, canEdit, saving, canUndo, can
             onBlur={commit}
             onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setTitle(board.title); e.target.blur() } }}
             aria-label="Board name"
-            className="w-[min(60vw,28rem)] rounded bg-transparent text-center text-lg font-bold tracking-tight outline-none hover:bg-white/5 focus:bg-white/10"
+            className="min-w-0 flex-1 rounded bg-transparent text-left text-lg font-bold tracking-tight outline-none hover:bg-white/5 focus:bg-white/10 sm:w-[min(50vw,28rem)] sm:flex-none sm:text-center"
           />
         ) : (
-          <h1 className="truncate text-center text-lg font-bold tracking-tight">{board.title}</h1>
+          <h1 className="min-w-0 flex-1 truncate text-left text-lg font-bold tracking-tight sm:flex-none sm:text-center">{board.title}</h1>
         )}
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-2">
           <div className="relative">
             <button type="button" onClick={() => setViewOpen((o) => !o)} aria-expanded={viewOpen} className="rounded-full px-2.5 py-1 text-sm text-white/70 hover:bg-white/10 hover:text-white">
               {zoom === 1 ? note.view : `${Math.round(zoom * 100)}%`} ▾
