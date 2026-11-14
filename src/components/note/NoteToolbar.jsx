@@ -21,7 +21,6 @@ const icons = {
   quote: <><path d="M5 5v14M10 8h9M10 12h9M10 16h6" /></>,
   title: <><path d="M4 6h16M4 11h10M4 16h10" /></>,
   rename: <><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" /></>,
-  icon: <><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01" /></>,
 }
 const Icon = ({ name }) => <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg>
 
@@ -45,7 +44,7 @@ function Tool({ type, label, onDragStart, hint }) {
 
 // The left toolbar. With nothing selected it holds the card types to drag out and the trash;
 // with cards selected it shows their options; while a note is being edited, text formatting.
-export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onIcon, onUpload, onOpenTrash, trashCount }) {
+export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onEditBoard, onUpload, onOpenTrash, trashCount }) {
   const [palette, setPalette] = useState(false)
   const single = selected.length === 1 ? selected[0] : null
 
@@ -90,8 +89,8 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
           )}
         </div>
         {single?.type === 'todo' && <button type="button" onClick={onToggleTitle} aria-pressed={single.title != null} className={`${tile} ${single.title != null ? 'bg-white/15 text-white' : ''}`}><Icon name="title" />Title</button>}
-        {single?.type === 'board' && <button type="button" onClick={onIcon} className={tile}><Icon name="icon" />Icon</button>}
-        {(single?.type === 'board' || single?.type === 'column') && <button type="button" onClick={onRename} className={tile}><Icon name="rename" />Rename</button>}
+        {single?.type === 'board' && <button type="button" onClick={onEditBoard} className={tile}><Icon name="rename" />Edit</button>}
+        {single?.type === 'column' && <button type="button" onClick={onRename} className={tile}><Icon name="rename" />Rename</button>}
         {single?.type === 'line' && (
           <>
             {toggle('Start', 'arrowStart', single.startArrow, () => onLine('startArrow', !single.startArrow))}
