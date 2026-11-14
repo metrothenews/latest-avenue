@@ -45,18 +45,18 @@ export const CARD_WIDTH = 300
 export const MIN_WIDTH = 160
 export const MAX_WIDTH = 900
 
-// Card and board colours: `key` is stored; classes are the look on the dark canvas.
-// Kept muted, to sit with the site's glass style.
+// Card and board colours: `key` is stored; classes are the look on the mid-grey canvas.
+// Cards are solid and dark so text stays readable; board icons carry the brighter colour.
 export const colors = [
-  { key: 'default', label: 'Default', swatch: 'bg-neutral-800', card: 'bg-neutral-900/80 border-white/15', board: 'bg-neutral-600' },
-  { key: 'grey', label: 'Grey', swatch: 'bg-neutral-500', card: 'bg-neutral-700/80 border-white/20', board: 'bg-neutral-500' },
-  { key: 'blue', label: 'Blue', swatch: 'bg-blue-500', card: 'bg-blue-950/80 border-blue-400/40', board: 'bg-blue-500' },
-  { key: 'violet', label: 'Violet', swatch: 'bg-violet-500', card: 'bg-violet-950/80 border-violet-400/40', board: 'bg-violet-500' },
-  { key: 'pink', label: 'Pink', swatch: 'bg-pink-500', card: 'bg-pink-950/80 border-pink-400/40', board: 'bg-pink-500' },
-  { key: 'red', label: 'Red', swatch: 'bg-red-500', card: 'bg-red-950/80 border-red-400/40', board: 'bg-red-500' },
-  { key: 'orange', label: 'Orange', swatch: 'bg-orange-500', card: 'bg-orange-950/80 border-orange-400/40', board: 'bg-orange-500' },
-  { key: 'yellow', label: 'Yellow', swatch: 'bg-yellow-500', card: 'bg-yellow-950/80 border-yellow-400/40', board: 'bg-yellow-500' },
-  { key: 'green', label: 'Green', swatch: 'bg-green-500', card: 'bg-green-950/80 border-green-400/40', board: 'bg-green-500' },
-  { key: 'teal', label: 'Teal', swatch: 'bg-teal-500', card: 'bg-teal-950/80 border-teal-400/40', board: 'bg-teal-500' },
+  { key: 'default', label: 'Default', swatch: 'bg-neutral-900', card: 'bg-neutral-900 border-white/15', board: 'bg-neutral-900' },
+  { key: 'grey', label: 'Grey', swatch: 'bg-neutral-300', card: 'bg-neutral-700 border-white/25', board: 'bg-neutral-300' },
+  { key: 'blue', label: 'Blue', swatch: 'bg-blue-500', card: 'bg-blue-950 border-blue-400/50', board: 'bg-blue-500' },
+  { key: 'violet', label: 'Violet', swatch: 'bg-violet-500', card: 'bg-violet-950 border-violet-400/50', board: 'bg-violet-500' },
+  { key: 'pink', label: 'Pink', swatch: 'bg-pink-500', card: 'bg-pink-950 border-pink-400/50', board: 'bg-pink-500' },
+  { key: 'red', label: 'Red', swatch: 'bg-red-500', card: 'bg-red-950 border-red-400/50', board: 'bg-red-500' },
+  { key: 'orange', label: 'Orange', swatch: 'bg-orange-500', card: 'bg-orange-950 border-orange-400/50', board: 'bg-orange-500' },
+  { key: 'yellow', label: 'Yellow', swatch: 'bg-yellow-500', card: 'bg-yellow-950 border-yellow-400/50', board: 'bg-yellow-500' },
+  { key: 'green', label: 'Green', swatch: 'bg-green-500', card: 'bg-green-950 border-green-400/50', board: 'bg-green-500' },
+  { key: 'teal', label: 'Teal', swatch: 'bg-teal-500', card: 'bg-teal-950 border-teal-400/50', board: 'bg-teal-500' },
 ]
 export const colorOf = (key) => colors.find((c) => c.key === key) ?? colors[0]

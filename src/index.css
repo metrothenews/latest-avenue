@@ -38,8 +38,10 @@ body::before {
   /* latest avenue note: the board's dotted canvas, and rich text inside note cards (both the
      editor and saved notes, whose HTML is injected and so can't carry Tailwind classes). */
   .note-canvas {
-    background-color: #0b0b0e;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+    /* A mid grey: lighter than the site's near-black, well short of light grey, so the dark cards
+       stand out and white headings placed straight on the board stay readable. */
+    background-color: #5c5c63;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px);
     background-size: 22px 22px;
   }
   .note-content { @apply break-words leading-relaxed text-white/90; }

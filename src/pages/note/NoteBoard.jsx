@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../../components/ui/Button.jsx'
 import Notice from '../../components/ui/Notice.jsx'
+import Modal from '../../components/ui/Modal.jsx'
 import CardBody from '../../components/note/CardBody.jsx'
 import NoteHeader from '../../components/note/NoteHeader.jsx'
 import NoteToolbar from '../../components/note/NoteToolbar.jsx'
@@ -439,8 +440,13 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
 
 // /team/note/:boardId ("home" is the top board). Works out whether the visitor is on the team
 // (can edit) or not (read-only, shared boards only), then shows the board.
+// /team/note itself is the home board with a welcome pop-up over it.
 export default function NoteBoard() {
-  const { boardId } = useParams()
+  const params = useParams()
+  const navigate = useNavigate()
+  const boardId = params.boardId ?? HOME
+  const welcome = !params.boardId
+  const enter = () => navigate('/team/note/home', { replace: true })
   const { configured, user, loading, isOwner, signIn, signOut } = useAuth()
   const [team, setTeam] = useState(undefined) // undefined while checking
   const [signInError, setSignInError] = useState('')
@@ -457,14 +463,17 @@ export default function NoteBoard() {
 
   if (!configured) return <Notice>Firebase isn't configured yet. Fill in src/data/firebase.js (see README → Owner login).</Notice>
   if (!isBoardId(boardId)) return <p className="p-8 text-white/70">{note.missing}</p>
-  if (loading || team === undefined) return <p className="p-8 text-sm text-white/50">Loading…</p>
   return (
     <>
-      <Board
+      {loading || team === undefined ? <p className="p-8 text-sm text-white/50">Loading…</p> : <Board
         key={`${boardId}-${team}`} boardId={boardId} canEdit={team} email={user?.email} signedIn={Boolean(user)}
         onSignIn={async () => setSignInError(await signIn())} onSignOut={signOut}
-      />
+      />}
       {signInError && <p className="px-4 text-center text-sm text-red-300/90" role="alert">{signInError}</p>}
+      <Modal open={welcome} onClose={enter} title={note.name}>
+        <p className="text-white/70">{note.tagline}</p>
+        <Button className="mt-6" onClick={enter}>{note.open}</Button>
+      </Modal>
     </>
   )
 }
