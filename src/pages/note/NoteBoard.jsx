@@ -5,6 +5,7 @@ import Notice from '../../components/ui/Notice.jsx'
 import Modal from '../../components/ui/Modal.jsx'
 import CardBody from '../../components/note/CardBody.jsx'
 import NoteHeader from '../../components/note/NoteHeader.jsx'
+import { useNoteLock } from '../../lib/noteLock.js'
 import NoteToolbar from '../../components/note/NoteToolbar.jsx'
 import TrashPanel from '../../components/note/TrashPanel.jsx'
 import ShareDialog from '../../components/note/ShareDialog.jsx'
@@ -74,8 +75,9 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   }, [boardId, canEdit, email])
 
   const readable = Boolean(board)
-  // A locked board is read-only even for the team, until someone unlocks it (the switch by its name).
-  const locked = Boolean(board?.locked)
+  // The lock (the switch by the board's name) makes every board read-only for this person, in this
+  // browser, until they switch it off again.
+  const [locked, setLocked] = useNoteLock()
   const editable = canEdit && !locked
   useEffect(() => {
     if (!readable) return
@@ -109,7 +111,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     if (canEdit && board && board.cardCount !== count) updateBoard(boardId, { cardCount: count }).catch(() => {})
   }, [canEdit, board, boardId, count])
 
-  // Locking (by anyone) ends whatever was being edited, saving it, and clears the selection.
+  // Locking ends whatever was being edited, saving it, and clears the selection.
   useEffect(() => {
     if (!locked) return
     api.current.finishEditing?.()
@@ -756,14 +758,16 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <NoteHeader
-        board={board} trail={trail} canEdit={canEdit} editable={editable} saving={pending > 0}
-        onLock={(on) => { finishEditing(); run(updateBoard(boardId, { locked: on })) }}
+        board={board} trail={trail} canEdit={canEdit} editable={editable} locked={locked} saving={pending > 0}
+        onLock={(on) => { finishEditing(); setLocked(on) }}
         canUndo={history.undo.length > 0} canRedo={history.redo.length > 0} onUndo={undo} onRedo={redo}
         onRename={(title) => run(updateBoard(boardId, { title }))} onShare={() => setShareOpen(true)}
         zoom={zoom} onZoom={zoomTo} onFit={fit}
       />
       {error && <p className="bg-red-950/80 px-4 py-2 text-sm text-red-200" role="alert">{error}</p>}
       <div className="flex min-h-0 flex-1">
+        {/* Locked: the panel stays, empty, so the board doesn't shift sideways. */}
+        {canEdit && locked && <aside className="glass-bar z-20 w-16 shrink-0 border-r" aria-label="Board tools (locked)" />}
         {editable && (
           <NoteToolbar
             selected={selected} editor={editing ? editor : null} onDragStart={onToolDown} hintFor={hint}

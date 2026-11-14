@@ -8,12 +8,11 @@ const crumbLink = 'flex min-w-0 items-center gap-1.5 text-white/60 hover:text-wh
 const iconButton = 'rounded-md px-2 py-1 text-lg leading-none text-white/60 hover:bg-white/10 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent'
 
 // Two rows above a board: breadcrumbs with undo / redo, then save status, the title and Share.
-export default function NoteHeader({ board, trail, canEdit, editable, onLock, saving, canUndo, canRedo, onUndo, onRedo, onRename, onShare, zoom, onZoom, onFit }) {
+export default function NoteHeader({ board, trail, canEdit, editable, locked, onLock, saving, canUndo, canRedo, onUndo, onRedo, onRename, onShare, zoom, onZoom, onFit }) {
   const [title, setTitle] = useState(board.title)
   const [viewOpen, setViewOpen] = useState(false)
   useEffect(() => setTitle(board.title), [board.title])
   const renamable = editable && board.id !== HOME
-  const locked = Boolean(board.locked)
 
   function commit() {
     const next = title.trim()
@@ -41,8 +40,8 @@ export default function NoteHeader({ board, trail, canEdit, editable, onLock, sa
             <span className="truncate">{board.title}</span>
           </span>
         </nav>
-        {editable && (
-          <div className="flex shrink-0 items-center gap-1">
+        {canEdit && (
+          <div className={`flex shrink-0 items-center gap-1 ${editable ? '' : 'invisible'}`}>
             <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo" title="Undo" className={iconButton}>↶</button>
             <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="Redo" title="Redo" className={iconButton}>↷</button>
           </div>
@@ -63,9 +62,9 @@ export default function NoteHeader({ board, trail, canEdit, editable, onLock, sa
             className="min-w-0 flex-1 rounded bg-transparent text-left text-lg font-bold tracking-tight outline-none hover:bg-white/5 focus:bg-white/10 sm:w-[min(40vw,24rem)] sm:flex-none sm:text-center"
           />
         ) : (
-          <h1 className="min-w-0 flex-1 truncate text-left text-lg font-bold tracking-tight sm:flex-none sm:text-center">{board.title}</h1>
+          <h1 className={`min-w-0 flex-1 truncate text-left text-lg font-bold tracking-tight sm:flex-none sm:text-center ${canEdit ? 'sm:w-[min(40vw,24rem)]' : ''}`}>{board.title}</h1>
         )}
-        {/* Lock: a team member can make the board read-only (for everyone) so nothing gets changed by accident. */}
+        {/* Lock: a team member can switch themselves to read-only (on every board, until switched off) so nothing gets changed by accident. */}
         {canEdit && (
           <button
             type="button" role="switch" aria-checked={locked} aria-label={note.lockLabel} title={locked ? note.unlockHint : note.lockHint}
