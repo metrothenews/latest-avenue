@@ -5,6 +5,8 @@
 //   every board inside it).
 // - noteBoards/{boardId}/cards/{cardId}: { type, x, y, w, z, color, trashed, createdBy, createdAt, … }
 //   type "note": html · "todo": title, items [{ id, text, done }] · "heading": text · "board": boardId
+//   "column": title, collapsed (cards inside it carry `column` and `order` instead of using x, y)
+//   "line": from / to { card | null, x, y }, startArrow, endArrow, dashed, weight, label, bend
 // Team members read and write everything; everyone else can only read public boards.
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db, deadline } from './team.js'
@@ -94,7 +96,8 @@ export async function moveCards(fromId, to, cards) {
   const batch = writeBatch(db)
   cards.forEach((card, i) => {
     const { id, ...data } = card
-    batch.set(cardRef(to.id, id), { ...data, x: 40 + i * 24, y: 40 + i * 24 })
+    // Cards inside a column that came along keep their place in it; the rest are laid out afresh.
+    batch.set(cardRef(to.id, id), data.column ? data : { ...data, column: null, x: 40 + i * 24, y: 40 + i * 24 })
     batch.delete(cardRef(fromId, id))
     if (card.type === 'board') batch.update(boardRef(card.boardId), { parent: to.id })
   })

@@ -21,6 +21,9 @@ export const note = {
   todoTitle: 'New to-do list',
   headingPlaceholder: 'Heading',
   newBoard: 'New board',
+  newColumn: 'New column',
+  view: 'View',
+  fit: 'Scale to fit',
   trash: 'Trash',
   trashEmpty: 'Nothing in the trash for this board.',
   emptyTrash: 'Empty trash',
@@ -38,25 +41,31 @@ export const tools = [
   { type: 'note', label: 'Note' },
   { type: 'todo', label: 'To-do' },
   { type: 'heading', label: 'Heading' },
+  { type: 'line', label: 'Line' },
   { type: 'board', label: 'Board' },
+  { type: 'column', label: 'Column' },
 ]
 
 export const CARD_WIDTH = 300
+export const COLUMN_WIDTH = 320
+export const ZOOM_MIN = 0.2
+export const ZOOM_MAX = 2
 export const MIN_WIDTH = 160
 export const MAX_WIDTH = 900
 
 // Card and board colours: `key` is stored; classes are the look on the mid-grey canvas.
-// Cards are solid and dark so text stays readable; board icons carry the brighter colour.
+// Cards are solid and dark so text stays readable; board icons carry the brighter colour, and
+// `line` is the colour of a line or arrow (as a text colour, used through currentColor).
 export const colors = [
-  { key: 'default', label: 'Default', swatch: 'bg-neutral-900', card: 'bg-neutral-900 border-white/15', board: 'bg-neutral-900' },
-  { key: 'grey', label: 'Grey', swatch: 'bg-neutral-300', card: 'bg-neutral-700 border-white/25', board: 'bg-neutral-300' },
-  { key: 'blue', label: 'Blue', swatch: 'bg-blue-500', card: 'bg-blue-950 border-blue-400/50', board: 'bg-blue-500' },
-  { key: 'violet', label: 'Violet', swatch: 'bg-violet-500', card: 'bg-violet-950 border-violet-400/50', board: 'bg-violet-500' },
-  { key: 'pink', label: 'Pink', swatch: 'bg-pink-500', card: 'bg-pink-950 border-pink-400/50', board: 'bg-pink-500' },
-  { key: 'red', label: 'Red', swatch: 'bg-red-500', card: 'bg-red-950 border-red-400/50', board: 'bg-red-500' },
-  { key: 'orange', label: 'Orange', swatch: 'bg-orange-500', card: 'bg-orange-950 border-orange-400/50', board: 'bg-orange-500' },
-  { key: 'yellow', label: 'Yellow', swatch: 'bg-yellow-500', card: 'bg-yellow-950 border-yellow-400/50', board: 'bg-yellow-500' },
-  { key: 'green', label: 'Green', swatch: 'bg-green-500', card: 'bg-green-950 border-green-400/50', board: 'bg-green-500' },
-  { key: 'teal', label: 'Teal', swatch: 'bg-teal-500', card: 'bg-teal-950 border-teal-400/50', board: 'bg-teal-500' },
+  { key: 'default', label: 'Default', swatch: 'bg-neutral-900', card: 'bg-neutral-900 border-white/15', board: 'bg-neutral-900', line: 'text-white' },
+  { key: 'grey', label: 'Grey', swatch: 'bg-neutral-300', card: 'bg-neutral-700 border-white/25', board: 'bg-neutral-300', line: 'text-neutral-300' },
+  { key: 'blue', label: 'Blue', swatch: 'bg-blue-500', card: 'bg-blue-950 border-blue-400/50', board: 'bg-blue-500', line: 'text-blue-400' },
+  { key: 'violet', label: 'Violet', swatch: 'bg-violet-500', card: 'bg-violet-950 border-violet-400/50', board: 'bg-violet-500', line: 'text-violet-400' },
+  { key: 'pink', label: 'Pink', swatch: 'bg-pink-500', card: 'bg-pink-950 border-pink-400/50', board: 'bg-pink-500', line: 'text-pink-400' },
+  { key: 'red', label: 'Red', swatch: 'bg-red-500', card: 'bg-red-950 border-red-400/50', board: 'bg-red-500', line: 'text-red-400' },
+  { key: 'orange', label: 'Orange', swatch: 'bg-orange-500', card: 'bg-orange-950 border-orange-400/50', board: 'bg-orange-500', line: 'text-orange-400' },
+  { key: 'yellow', label: 'Yellow', swatch: 'bg-yellow-500', card: 'bg-yellow-950 border-yellow-400/50', board: 'bg-yellow-500', line: 'text-yellow-400' },
+  { key: 'green', label: 'Green', swatch: 'bg-green-500', card: 'bg-green-950 border-green-400/50', board: 'bg-green-500', line: 'text-green-400' },
+  { key: 'teal', label: 'Teal', swatch: 'bg-teal-500', card: 'bg-teal-950 border-teal-400/50', board: 'bg-teal-500', line: 'text-teal-400' },
 ]
 export const colorOf = (key) => colors.find((c) => c.key === key) ?? colors[0]

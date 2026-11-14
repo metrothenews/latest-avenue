@@ -6,6 +6,13 @@ const icons = {
   note: <><path d="M5 7h14M5 12h14M5 17h9" /></>,
   todo: <><path d="M4 7l1.5 1.5L8 6M4 16l1.5 1.5L8 15M11 7h9M11 16h9" /></>,
   heading: <><path d="M6 5v14M18 5v14M6 12h12" /></>,
+  line: <><path d="M5 19L19 5M19 5h-6M19 5v6" /></>,
+  column: <><rect x="6" y="3" width="12" height="18" rx="2" /><path d="M9 8h6" /></>,
+  arrowStart: <><path d="M20 12H5M10 7l-5 5 5 5" /></>,
+  arrowEnd: <><path d="M4 12h15M14 7l5 5-5 5" /></>,
+  dashed: <><path d="M4 12h3M10.5 12h3M17 12h3" /></>,
+  weight: <><path d="M4 7h16" strokeWidth="1" /><path d="M4 12h16" strokeWidth="2" /><path d="M4 17.5h16" strokeWidth="3.5" /></>,
+  label: <><rect x="3" y="8" width="18" height="8" rx="4" /><path d="M8 12h8" /></>,
   trash: <><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></>,
   back: <><path d="M19 12H5M11 6l-6 6 6 6" /></>,
   bullets: <><path d="M9 7h11M9 12h11M9 17h11" /><circle cx="4.5" cy="7" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="17" r="1" /></>,
@@ -36,9 +43,13 @@ function Tool({ type, label, onDragStart, hint }) {
 
 // The left toolbar. With nothing selected it holds the card types to drag out and the trash;
 // with cards selected it shows their options; while a note is being edited, text formatting.
-export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onOpenTrash, trashCount }) {
+export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onOpenTrash, trashCount }) {
   const [palette, setPalette] = useState(false)
   const single = selected.length === 1 ? selected[0] : null
+
+  const toggle = (label, icon, on, run) => (
+    <button key={label} type="button" onClick={run} aria-pressed={Boolean(on)} className={`${tile} ${on ? 'bg-white/15 text-white' : ''}`}><Icon name={icon} />{label}</button>
+  )
 
   let content
   if (editor) {
@@ -77,7 +88,16 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
           )}
         </div>
         {single?.type === 'todo' && <button type="button" onClick={onToggleTitle} aria-pressed={single.title != null} className={`${tile} ${single.title != null ? 'bg-white/15 text-white' : ''}`}><Icon name="title" />Title</button>}
-        {single?.type === 'board' && <button type="button" onClick={onRename} className={tile}><Icon name="rename" />Rename</button>}
+        {(single?.type === 'board' || single?.type === 'column') && <button type="button" onClick={onRename} className={tile}><Icon name="rename" />Rename</button>}
+        {single?.type === 'line' && (
+          <>
+            {toggle('Start', 'arrowStart', single.startArrow, () => onLine('startArrow', !single.startArrow))}
+            {toggle('End', 'arrowEnd', single.endArrow, () => onLine('endArrow', !single.endArrow))}
+            {toggle('Dashed', 'dashed', single.dashed, () => onLine('dashed', !single.dashed))}
+            <button type="button" onClick={() => onLine('weight', ((single.weight ?? 2) % 3) + 1)} className={tile} aria-label={`Weight: ${single.weight ?? 2} of 3. Change`}><Icon name="weight" />Weight</button>
+            <button type="button" onClick={onRename} className={tile}><Icon name="label" />Label</button>
+          </>
+        )}
         <button type="button" onClick={onTrash} className={tile}><Icon name="trash" />Delete</button>
       </>
     )
@@ -93,5 +113,5 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
     )
   }
 
-  return <aside className="glass-bar z-20 flex w-16 shrink-0 flex-col gap-1 border-r p-1.5" aria-label="Board tools">{content}</aside>
+  return <aside className="glass-bar z-20 flex w-16 shrink-0 flex-col gap-1 overflow-y-auto border-r p-1.5" aria-label="Board tools">{content}</aside>
 }

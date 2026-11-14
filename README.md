@@ -128,7 +128,10 @@ src/
     note/
       NoteHeader.jsx        breadcrumbs, undo / redo, save status, board title, Share
       NoteToolbar.jsx       left toolbar: card types to drag out; options for the selection; text formatting while editing
-      CardBody.jsx          the inside of a card by type (note, to-do list, heading, board icon), shown and edited
+      CardBody.jsx          the inside of a card by type (note, to-do list, heading, board icon, column header), shown and edited
+      LineEdit.jsx          one-line text field for headings, board / column names and line labels
+      Lines.jsx             the lines and arrows layer (SVG) with end and bend handles and labels
+      ContextMenu.jsx       right-click menu
       NoteEditor.jsx        rich text editor for note cards (TipTap)
       TrashPanel.jsx        a board's trashed cards: restore, empty
       ShareDialog.jsx       read-only link on / off, copy link
@@ -177,6 +180,7 @@ src/
     team.js                 Firestore: team list (teamMembers) and the portal's welcome message (portal/welcome)
     assignments.js          the assignments doc: read from Drive as HTML (Google export, or Word via mammoth), cleaned, stored in Firestore
     note.js                 Firestore: note boards and their cards, live; sharing; moving cards between boards
+    noteGeometry.js         where a line runs between cards: edge points, curve, arrowheads
     teamChat.js             Firestore: team messaging (chats and their messages), live updates
     firebase.js             initializes Firebase from data/firebase.js; exports auth (null if unconfigured)
     format.js               compact(), num(), slugify(); null-safe (null shows as "[X]")
@@ -423,14 +427,19 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 **Who can do what:** team members (the team list at `/admin/team`, plus Sam) **edit** everything. Everyone else can only **view** a board whose read-only link has been switched on (**Share** on the board). The link is the board's address (`/team/note/<id>`, a long random ID); turning it on shares that board and every board inside it, and new boards made inside inherit it. The home board (`/team/note/home`) is private unless shared. Nothing on the public site links to any of it.
 
-### What's built (phase 1)
+### What's built (phases 1 and 2)
 
 - **`/team/note`** opens the home board with a short welcome pop-up over it; closing it (or "Open your boards") leaves you on `/team/note/home`.
 - **Home is a board.** `/team/note/home` holds your top-level boards as icons; every board works the same way. Double-click a board icon to open it (Enter also works); breadcrumbs at the top lead back up. Each icon shows how many cards are inside.
-- **Left toolbar:** drag **Note**, **To-do**, **Heading** or **Board** onto the canvas (clicking one just says "Drag me"). Double-clicking empty canvas adds a note. With cards selected the toolbar becomes their options (colour, to-do title, rename board, delete); while editing a note it becomes text formatting.
+- **Left toolbar:** drag **Note**, **To-do**, **Heading**, **Line**, **Board** or **Column** onto the canvas (clicking one just says "Drag me"). Double-clicking empty canvas adds a note. With cards selected the toolbar becomes their options (colour, to-do title, rename, line style, delete); while editing a note it becomes text formatting.
 - **Notes:** rich text (TipTap): headings, bold, italic, strikethrough, bullet and numbered lists, quotes. Typing `# `, `## `, `* `, `1. ` or `> ` at the start of a line works too.
 - **To-do lists:** Enter adds the next task, Backspace on an empty one removes it; tick boxes work without entering edit mode; optional title.
-- **Cards:** click to select, Shift-click or drag a box to select several, drag to move, drag the corner to change width, click a selected card (or double-click) to edit, Esc to stop. Drag cards onto a board icon to move them inside it.
+- **Cards:** click to select, Shift-click or drag a box to select several, drag to move, drag the corner to change width, click a selected card (or double-click) to edit, Esc to stop. Drag cards (or a whole column) onto a board icon to move them inside it; lines stay behind.
+- **Columns:** a titled stack of cards. Drag cards in (they take the column's width and drop into the stack where you let go), drag them up and down to reorder, drag them out to put them back on the board. Moving a column moves its cards; the `–` in its corner collapses it. Columns don't nest. Deleting a column hides its cards with it (undo or Trash → Restore brings both back; Empty trash removes both).
+- **Lines and arrows:** drag **Line** out, then select it and drag an end onto a card to attach it; attached ends follow the card. Drag the middle handle to curve it (drag it back to straighten). The toolbar sets colour, an arrowhead at the start and / or end, dashed, weight (3 thicknesses) and a label (double-clicking the line also edits the label). Lines aren't counted as cards.
+- **Right-click:** on a card: Cut, Copy, Duplicate, Bring to front, Send to back, Move to trash (a board also gets Open, Open in new tab, Copy link, Rename). On the canvas: Undo, Redo, Paste, Select all, and New note / to-do / heading / line / board / column at that spot.
+- **Copy and paste:** ⌘/Ctrl+C, X, V. Pasting puts the cards under the pointer, and works across boards while the site stays open (it's the app's own clipboard, not the computer's). Boards and columns can't be copied or duplicated.
+- **Zoom:** the **View** menu (it shows the percentage when not 100%), ⌘/Ctrl + and −, ⌘/Ctrl+0 for 100%, **Z** to scale to fit, or hold ⌘/Ctrl and scroll (a trackpad pinch works too). Viewers can zoom as well.
 - **Keyboard:** Delete, arrows to nudge (Shift for 1px), ⌘/Ctrl+Z undo, Shift+⌘/Ctrl+Z redo, ⌘/Ctrl+A select all, ⌘/Ctrl+D duplicate, Enter to edit or open.
 - **Undo / redo** (also in the header) covers adding, moving, resizing, editing, colours and deleting, for this visit to the board. **Trash** (bottom of the toolbar) lists the board's deleted cards to restore, or empties it for good.
 - **Live:** several people can have a board open; changes appear for everyone, including read-only viewers. Two people editing the *same card* at once: the last save wins.
@@ -439,12 +448,11 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 ### How it's stored (Firestore)
 
 - `noteBoards/{id}` = `{ title, parent, color, public, cardCount, createdBy, createdAt }`; `home` is the top board.
-- `noteBoards/{id}/cards/{cardId}` = `{ type, x, y, w, z, color, trashed, … }` with `html` (note), `title` + `items` (to-do), `text` (heading) or `boardId` (a board's icon).
+- `noteBoards/{id}/cards/{cardId}` = `{ type, x, y, w, z, color, trashed, … }` with `html` (note), `title` + `items` (to-do), `text` (heading), `boardId` (a board's icon), `title` + `collapsed` (column; cards inside it carry `column` and `order`), or `from` / `to` / `startArrow` / `endArrow` / `dashed` / `weight` / `label` / `bend` (line; an end is `{ card }` when attached, else `{ x, y }`).
 - **Security (`firestore.rules`):** team members read and write boards and cards; anyone can read a board with `public: true` and its cards; nobody else can write. **Deploy the rules** (`firebase deploy --only firestore:rules`) or nobody but Sam can use it.
 
 ### Still to build
 
-2. Columns, lines and arrows between cards, right-click menus, zoom.
 3. Links, images, video and audio embeds (YouTube, Vimeo, Spotify, SoundCloud), colour swatches, comments. On the free plan images are limited to a few MB each and ordinary web links get no thumbnail preview (Sam chose to stay on the free plan for now).
 4. Live cursors, an editor link (so far only read-only links exist).
 5. Tables, long documents, sketching, export, search, templates, and the public homepage for `/team/note` (currently a welcome pop-up over the home board).
@@ -631,7 +639,7 @@ npm run dev       # then check in the browser:
 - `/team/chat` (needs two accounts on the team list, in two browsers): a message in Team chat appears in the other browser without reloading; a private message shows a dot for the other person, opens only for those two people, and a reply appears live. At phone width the list and the chat are separate screens with a back arrow
 - `/analytics` (owner): connect Meta; totals, chart and Top campaigns load; clicking a total or the dropdown changes the chart; changing the date range reloads everything; a campaign opens its own view and ‹ goes back; "Continue with Facebook" comes back to `/analytics`. At phone width the admin tabs sit on a second row that scrolls sideways
 - `/admin/team` → Assignments (owner, Drive connected): paste a doc link, Refresh; "Showing … last refreshed …" appears. In `/team` → Assignments the whole doc shows as one page with its bold text, blank lines, links and lists. Edit the doc, Refresh, reload the team page: the change is there
-- `/team/note/home` (team member): drag a Board out, name it, double-click it; drag out a Note, a To-do and a Heading and type in each; move, resize, colour, duplicate, delete and undo them; restore from Trash; drag a card onto a board icon. Share → turn the link on → open it in a private window: the board shows with "View only", no toolbar, and nothing can be changed; turn it off and the private window says the board is private
+- `/team/note/home` (team member): drag a Board out, name it, double-click it; drag out a Note, a To-do and a Heading and type in each; move, resize, colour, duplicate, delete and undo them; restore from Trash; drag a card onto a board icon. Drag a Column out and drop notes into it, reorder them, pull one out, collapse it. Drag a Line out, attach its ends to two cards, move a card (the line follows), curve it, label it. Right-click a card and the canvas. Zoom from View and with ⌘/Ctrl + scroll; press Z. Share → turn the link on → open it in a private window: the board shows with "View only", no toolbar, and nothing can be changed; turn it off and the private window says the board is private
 - `/admin` redirects to `/login` when signed out; `/signup` and `/reset-password` redirect to `/login`
 - Tab title changes per page (e.g. "Contact | latest avenue"); an unknown URL shows "Page not found | latest avenue"
 - Mobile width (~375px): ☰ menu opens and closes, no horizontal scroll
