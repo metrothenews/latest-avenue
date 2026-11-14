@@ -158,8 +158,7 @@ src/
     admin/Team.jsx          /admin/team: who can open the team portal, and its welcome message (see Team portal)
     Team.jsx                /team: team portal home: the welcome page
     TeamAssignments.jsx     /team/assignments: the assignments doc, whole, as one page (see Team assignments)
-    note/NoteHome.jsx       /team/note: front page of latest avenue note (placeholder until the full homepage)
-    note/NoteBoard.jsx      /team/note/:boardId: one board: canvas, dragging, selection, undo, keyboard (see latest avenue note)
+    note/NoteBoard.jsx      /team/note (home board + welcome pop-up) and /team/note/:boardId: one board: canvas, dragging, selection, undo, keyboard (see latest avenue note)
     TeamMessages.jsx        /team/chat: team chat + private one-to-one chats (see Team messaging)
     Global.jsx              /global: hidden outline guessing game, then a gift link (see The /global game)
     NotFound.jsx            404
@@ -207,7 +206,7 @@ Defined in `src/App.jsx`.
 | `/admin/team` | Admin: team list and welcome message (owner only) | AdminLayout | admin header and dashboard ("Admin") |
 | `/team` | Team portal (people on the team list) | TeamLayout | **no** (share the address with the team) |
 | `/team/assignments` | Team assignments: one doc shown whole (people on the team list) | TeamLayout | team portal header |
-| `/team/note` | latest avenue note front page | none (full screen) | **no** (unlisted) |
+| `/team/note` | The note home board with a welcome pop-up over it | none (full screen) | **no** (unlisted) |
 | `/team/note/home`, `/team/note/:boardId` | A note board. Team members edit; anyone with the link can view a board that has been shared | none (full screen) | team portal header ("Note") |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
@@ -426,6 +425,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ### What's built (phase 1)
 
+- **`/team/note`** opens the home board with a short welcome pop-up over it; closing it (or "Open your boards") leaves you on `/team/note/home`.
 - **Home is a board.** `/team/note/home` holds your top-level boards as icons; every board works the same way. Double-click a board icon to open it (Enter also works); breadcrumbs at the top lead back up. Each icon shows how many cards are inside.
 - **Left toolbar:** drag **Note**, **To-do**, **Heading** or **Board** onto the canvas (clicking one just says "Drag me"). Double-clicking empty canvas adds a note. With cards selected the toolbar becomes their options (colour, to-do title, rename board, delete); while editing a note it becomes text formatting.
 - **Notes:** rich text (TipTap): headings, bold, italic, strikethrough, bullet and numbered lists, quotes. Typing `# `, `## `, `* `, `1. ` or `> ` at the start of a line works too.
@@ -447,7 +447,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 2. Columns, lines and arrows between cards, right-click menus, zoom.
 3. Links, images, video and audio embeds (YouTube, Vimeo, Spotify, SoundCloud), colour swatches, comments. On the free plan images are limited to a few MB each and ordinary web links get no thumbnail preview (Sam chose to stay on the free plan for now).
 4. Live cursors, an editor link (so far only read-only links exist).
-5. Tables, long documents, sketching, export, search, templates, and the public homepage for `/team/note` (currently a one-screen placeholder).
+5. Tables, long documents, sketching, export, search, templates, and the public homepage for `/team/note` (currently a welcome pop-up over the home board).
 
 ---
 

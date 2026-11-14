@@ -33,7 +33,7 @@ function LineEdit({ value, field, valueRef, placeholder, className }) {
     valueRef.current = () => ({ [field]: text.trim() })
     return () => { valueRef.current = null }
   }, [text, field, valueRef])
-  return <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className={`w-full bg-transparent outline-none placeholder:text-white/30 ${className}`} />
+  return <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className={`w-full bg-transparent outline-none placeholder:text-white/50 ${className}`} />
 }
 
 // A to-do list being edited: a field per task. Enter adds the next one; Backspace on an empty one removes it.
@@ -120,7 +120,7 @@ export default function CardBody({ card, child, editing, canEdit, valueRef, onEd
   if (card.type === 'heading') {
     return editing
       ? <LineEdit value={card.text} field="text" valueRef={valueRef} placeholder={note.headingPlaceholder} className="text-2xl font-extrabold tracking-tight" />
-      : <p className={`break-words text-2xl font-extrabold tracking-tight ${card.text ? '' : 'text-white/30'}`}>{card.text || note.headingPlaceholder}</p>
+      : <p className={`break-words text-2xl font-extrabold tracking-tight ${card.text ? '' : 'text-white/50'}`}>{card.text || note.headingPlaceholder}</p>
   }
   if (card.type === 'todo') {
     return editing ? <TodoEdit card={card} valueRef={valueRef} /> : <TodoView card={card} canEdit={canEdit} onToggle={onToggleTodo} />
@@ -131,13 +131,13 @@ export default function CardBody({ card, child, editing, canEdit, valueRef, onEd
     <div className="flex flex-col items-center gap-2 text-center" data-board-card={card.boardId}>
       <span className={`flex h-16 w-16 items-center justify-center rounded-2xl ${colorOf(child?.color).board}`} aria-hidden="true">
         <span className="grid grid-cols-2 gap-1">
-          {[0, 1, 2, 3].map((i) => <span key={i} className="h-2.5 w-2.5 rounded-sm bg-white/80" />)}
+          {[0, 1, 2, 3].map((i) => <span key={i} className={`h-2.5 w-2.5 rounded-sm ${child?.color === 'grey' ? 'bg-black/70' : 'bg-white/80'}`} />)}
         </span>
       </span>
       {editing
         ? <LineEdit value={child?.title} field="boardTitle" valueRef={valueRef} placeholder={note.newBoard} className="text-center text-sm font-bold" />
         : <span className="max-w-full break-words text-sm font-bold">{child?.title || note.newBoard}</span>}
-      <span className="-mt-1 text-xs text-white/40">{count} card{count === 1 ? '' : 's'}</span>
+      <span className="-mt-1 text-xs text-white/70">{count} card{count === 1 ? '' : 's'}</span>
     </div>
   )
 }
