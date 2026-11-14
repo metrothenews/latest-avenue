@@ -134,6 +134,10 @@ export async function setPublic(boardId, isPublic) {
 
 // --- Files (PDFs). Stored as text in Firestore, so kept small: see MAX_FILE_BYTES. ---
 
+// Files already in memory (see "Reading files" below).
+const fetched = new Map() // fileId → Promise<Blob>, oldest first
+const sizes = new Map()
+
 const toBase64 = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader()
   reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(',') + 1))
@@ -153,21 +157,51 @@ export async function uploadFile(boardId, file, email, onProgress = () => {}) {
     await Promise.all(batch.map((i) => deadline(setDoc(partRef(id, i), { data: text.slice(i * PART_CHARS, (i + 1) * PART_CHARS) }), 120)))
     onProgress(Math.min(1, (n + batch.length) / parts))
   }
+  // The person who added it already has the file: no need to download it back to open it.
+  fetched.set(id, Promise.resolve(file))
+  sizes.set(id, file.size)
   return id
 }
 
-// The file as a Blob. onProgress(fraction) as it downloads.
-export async function loadFile(fileId, onProgress = () => {}) {
-  const meta = (await deadline(getDoc(fileRef(fileId)))).data()
-  if (!meta) throw new Error('This file is no longer here.')
-  const chunks = []
-  for (let n = 0; n < meta.parts; n += 8) {
-    const batch = Array.from({ length: Math.min(8, meta.parts - n) }, (_, i) => deadline(getDoc(partRef(fileId, n + i)), 60))
-    chunks.push(...(await Promise.all(batch)).map((snap) => snap.data()?.data ?? ''))
-    onProgress(chunks.length / meta.parts)
-  }
+// --- Reading files. A file never changes once saved, so each is fetched once and kept for as long
+// as the site stays open. Boards fetch their files ahead of time (preloadFiles), so opening one
+// doesn't wait for the download. ---
+const KEEP_BYTES = 150 * 1024 * 1024 // beyond this the files opened longest ago are let go
+
+async function fetchFile(fileId) {
+  // The entry and every part at once: one request for the lot is far quicker than one per part.
+  const [meta, parts] = await Promise.all([deadline(getDoc(fileRef(fileId))), deadline(getDocs(collection(db, 'noteFiles', fileId, 'parts')), 180)])
+  if (!meta.exists()) throw new Error('This file is no longer here.')
+  const text = parts.docs.sort((a, b) => Number(a.id) - Number(b.id)).map((d) => d.data().data ?? '').join('')
   // Through fetch, so a large file is decoded without blocking the page.
-  return (await fetch(`data:${meta.type || 'application/octet-stream'};base64,${chunks.join('')}`)).blob()
+  const blob = await (await fetch(`data:${meta.data().type || 'application/octet-stream'};base64,${text}`)).blob()
+  sizes.set(fileId, blob.size)
+  let total = [...sizes.values()].reduce((sum, n) => sum + n, 0)
+  for (const id of fetched.keys()) {
+    if (total <= KEEP_BYTES || id === fileId) break
+    total -= sizes.get(id) ?? 0
+    fetched.delete(id)
+    sizes.delete(id)
+  }
+  return blob
+}
+
+// The file as a Blob (from memory if it was already fetched or is on its way).
+export function loadFile(fileId) {
+  if (!fetched.has(fileId)) {
+    const pending = fetchFile(fileId)
+    fetched.set(fileId, pending)
+    pending.catch(() => fetched.delete(fileId)) // a failed download can be tried again
+  }
+  return fetched.get(fileId)
+}
+
+// Fetches files in the background, one after another, so they're ready when opened.
+// Skipped when the browser asks to save data.
+let queue = Promise.resolve()
+export function preloadFiles(fileIds) {
+  if (navigator.connection?.saveData) return
+  for (const id of fileIds) if (!fetched.has(id)) queue = queue.then(() => loadFile(id)).catch(() => {})
 }
 
 // Deletes a file for good (when its card is emptied from the trash).
