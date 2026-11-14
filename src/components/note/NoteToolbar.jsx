@@ -9,6 +9,7 @@ const icons = {
   heading: <><path d="M6 5v14M18 5v14M6 12h12" /></>,
   line: <><path d="M5 19L19 5M19 5h-6M19 5v6" /></>,
   upload: <><path d="M7 3h7l4 4v14H7zM14 3v4h4M12 17v-6M9.5 13.5L12 11l2.5 2.5" /></>,
+  grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" /></>,
   column: <><rect x="6" y="3" width="12" height="18" rx="2" /><path d="M9 8h6" /></>,
   arrowStart: <><path d="M20 12H5M10 7l-5 5 5 5" /></>,
   arrowEnd: <><path d="M4 12h15M14 7l5 5-5 5" /></>,
@@ -46,7 +47,7 @@ function Tool({ type, label, onDragStart, hint }) {
 // The left toolbar. With nothing selected it holds the card types to drag out, Upload, the board's
 // Theme (one colour for everything on the board) and the trash;
 // with cards selected it shows their options; while a note is being edited, text formatting.
-export default function NoteToolbar({ selected, editor, theme, onTheme, onDragStart, hintFor, onBack, onTrash, onToggleTitle, onRename, onLine, onEditBoard, onUpload, onOpenTrash, trashCount }) {
+export default function NoteToolbar({ selected, editor, theme, onTheme, onCleanUp, onDragStart, hintFor, onBack, onTrash, onToggleTitle, onRename, onLine, onEditBoard, onUpload, onOpenTrash, trashCount }) {
   const [palette, setPalette] = useState(null) // where the theme menu is open: { left, top }
   const single = selected.length === 1 ? selected[0] : null
 
@@ -122,6 +123,7 @@ export default function NoteToolbar({ selected, editor, theme, onTheme, onDragSt
           </>,
           document.body,
         )}
+        <button type="button" onClick={onCleanUp} className={tile} aria-label={note.cleanUpHint} title={note.cleanUpHint}><Icon name="grid" />{note.cleanUp}</button>
         <button type="button" onClick={onOpenTrash} className={`${tile} mt-auto`}>
           <Icon name="trash" />
           {note.trash}{trashCount > 0 && ` (${trashCount})`}

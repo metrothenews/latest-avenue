@@ -19,7 +19,7 @@ import {
   preloadFiles, setCard, setPublic, updateBoard, uploadFile, watchBoard, watchCards, watchChildren,
 } from '../../lib/note.js'
 import { shiftLine } from '../../lib/noteGeometry.js'
-import { CARD_WIDTH, COLUMN_WIDTH, MAX_WIDTH, MIN_WIDTH, ZOOM_MAX, ZOOM_MIN, colorOf, note } from '../../data/note.js'
+import { CARD_WIDTH, COLUMN_WIDTH, GRID, MAX_WIDTH, MIN_WIDTH, ZOOM_MAX, ZOOM_MIN, colorOf, note } from '../../data/note.js'
 
 const BOARD_CARD_WIDTH = 128
 const typing = (el) => el?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el?.tagName ?? '')
@@ -74,6 +74,9 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   }, [boardId, canEdit, email])
 
   const readable = Boolean(board)
+  // A locked board is read-only even for the team, until someone unlocks it (the switch by its name).
+  const locked = Boolean(board?.locked)
+  const editable = canEdit && !locked
   useEffect(() => {
     if (!readable) return
     const stops = [watchCards(boardId, setCards, () => setError("Couldn't load this board's cards.")), watchChildren(boardId, canEdit, setChildren)]
@@ -105,6 +108,14 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   useEffect(() => {
     if (canEdit && board && board.cardCount !== count) updateBoard(boardId, { cardCount: count }).catch(() => {})
   }, [canEdit, board, boardId, count])
+
+  // Locking (by anyone) ends whatever was being edited, saving it, and clears the selection.
+  useEffect(() => {
+    if (!locked) return
+    api.current.finishEditing?.()
+    setSelection([])
+    setMenu(null)
+  }, [locked])
 
   // Fetch this board's PDFs (and the PDF reader) in the background, so opening one is quick.
   const fileIds = shown.filter((c) => c.type === 'file').map((c) => c.fileId).join(' ')
@@ -303,6 +314,18 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
       : { id: c.id, before: { x: c.x, y: c.y }, after: { x: Math.max(0, c.x + dx), y: Math.max(0, c.y + dy) } })))
   }
 
+  // Clean up: every card on the board (and every loose line end) moves to the nearest dot of the
+  // grid. Cards in columns already sit in a tidy stack. One action, so one Undo puts it all back.
+  function cleanUp() {
+    const snap = (v) => Math.max(GRID / 2, Math.round((v - GRID / 2) / GRID) * GRID + GRID / 2)
+    const end = (e) => (e.card ? e : { ...e, x: snap(e.x), y: snap(e.y) })
+    finishEditing()
+    patch([
+      ...top.filter((c) => c.x !== snap(c.x) || c.y !== snap(c.y)).map((c) => ({ id: c.id, before: { x: c.x, y: c.y }, after: { x: snap(c.x), y: snap(c.y) } })),
+      ...lines.map((l) => ({ id: l.id, before: { from: l.from, to: l.to }, after: { from: end(l.from), to: end(l.to) } })).filter((p) => !same(p.before, p.after)),
+    ])
+  }
+
   const open = (id) => navigate(`/team/note/${id}`)
 
   // --- Zoom ---
@@ -351,7 +374,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     e.stopPropagation()
     setHint(null)
     if (editing) finishEditing()
-    if (!canEdit) return
+    if (!editable) return
     const next = e.shiftKey
       ? (selection.includes(card.id) ? selection.filter((id) => id !== card.id) : [...selection, card.id])
       : (selection.includes(card.id) ? selection : [card.id])
@@ -383,7 +406,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     if (e.button !== 0 || e.target.closest('[data-card-id]')) return
     setHint(null)
     finishEditing()
-    if (!canEdit) return
+    if (!editable) return
     if (!e.shiftKey) setSelection([])
     if (e.pointerType !== 'touch') startDrag({ kind: 'marquee', sx: e.clientX, sy: e.clientY, cx: e.clientX, cy: e.clientY, base: e.shiftKey ? selection : [] })
   }
@@ -538,7 +561,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
 
   // --- Right-click menus ---
   function onContextMenu(e) {
-    if (!canEdit) return
+    if (!editable) return
     e.preventDefault()
     finishEditing()
     const el = e.target.closest('[data-card-id]')
@@ -594,7 +617,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   // --- Keyboard ---
   // True while a window is open over the board (it handles its own keys, such as Esc to close).
   const overlay = Boolean(menu || trashOpen || shareOpen || viewing)
-  api.current = { addCards, topZ, drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection, setViewing, overlay }
+  api.current = { addCards, topZ, drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection, setViewing, overlay, editable }
   useEffect(() => {
     // Whether a window was open when the key went down. It's noted on the way in (capture),
     // because by the time the key reaches onKey the window may have closed itself on Esc, and
@@ -611,7 +634,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
       if (mod && key === '-') { e.preventDefault(); return a.zoomTo(a.zoom - 0.1) }
       if (mod && key === '0') { e.preventDefault(); return a.zoomTo(1) }
       if (!mod && key === 'z' && !typing(e.target)) return a.fit()
-      if (!canEdit) return
+      if (!a.editable) return
       if (e.key === 'Escape') {
         if (a.editing) a.finishEditing()
         else a.setSelection([])
@@ -694,27 +717,27 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
           stacked && card.type === 'board' ? 'mx-auto w-32' : '',
           isSelected ? 'outline outline-2 outline-white' : dropOn === card.id ? 'outline outline-2 outline-dashed outline-white/70' : '',
           moving && stacked ? 'pointer-events-none' : '',
-          canEdit ? (isEditing ? 'cursor-text' : 'cursor-grab touch-none select-none') : (card.type === 'board' || isFile ? 'cursor-pointer' : ''),
+          editable ? (isEditing ? 'cursor-text' : 'cursor-grab touch-none select-none') : (card.type === 'board' || isFile ? 'cursor-pointer' : ''),
         ].join(' ')}
         onPointerDown={(e) => onCardPointerDown(e, card)}
-        onClick={() => { if (!canEdit && card.type === 'board') open(card.boardId); if (!canEdit && isFile) setViewing(card) }}
+        onClick={() => { if (!editable && card.type === 'board') open(card.boardId); if (!editable && isFile) setViewing(card) }}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (card.type === 'board') open(card.boardId)
           else if (isFile) setViewing(card)
-          else if (canEdit && !isEditing) setEditing(card.id)
+          else if (editable && !isEditing) setEditing(card.id)
         }}
       >
         <CardBody
-          card={card} child={children.get(card.boardId)} tint={tint} kids={kids.length} editing={isEditing} canEdit={canEdit} valueRef={valueRef}
+          card={card} child={children.get(card.boardId)} tint={tint} kids={kids.length} editing={isEditing} canEdit={editable} valueRef={valueRef}
           onEditor={setEditor} onEditorChange={() => redraw((n) => n + 1)} onToggleTodo={(itemId) => toggleTodo(card, itemId)}
         />
         {card.type === 'column' && (
           <>
             <button
               type="button" aria-label={card.collapsed ? 'Expand column' : 'Collapse column'} aria-expanded={!card.collapsed}
-              onPointerDown={(e) => e.stopPropagation()} onClick={() => (canEdit ? setField(card, 'collapsed', !card.collapsed) : null)}
-              className={`absolute right-1.5 top-1.5 h-6 w-6 rounded text-white/50 hover:bg-white/10 hover:text-white ${canEdit ? '' : 'hidden'}`}
+              onPointerDown={(e) => e.stopPropagation()} onClick={() => (editable ? setField(card, 'collapsed', !card.collapsed) : null)}
+              className={`absolute right-1.5 top-1.5 h-6 w-6 rounded text-white/50 hover:bg-white/10 hover:text-white ${editable ? '' : 'hidden'}`}
             >{card.collapsed ? '+' : '–'}</button>
             {!card.collapsed && (
               <div className={`flex min-h-[3.5rem] flex-col gap-2 p-2 ${kids.length ? '' : 'm-2 rounded-md border border-dashed border-white/20'}`}>
@@ -723,7 +746,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
             )}
           </>
         )}
-        {canEdit && isSelected && !stacked && (framed || isFile || card.type === 'column') && selection.length === 1 && (
+        {editable && isSelected && !stacked && (framed || isFile || card.type === 'column') && selection.length === 1 && (
           <span onPointerDown={(e) => onResizeDown(e, card)} className="absolute bottom-0 right-0 h-4 w-4 cursor-ew-resize touch-none rounded-br-md border-b-2 border-r-2 border-white/70" aria-hidden="true" />
         )}
       </div>
@@ -733,17 +756,18 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <NoteHeader
-        board={board} trail={trail} canEdit={canEdit} saving={pending > 0}
+        board={board} trail={trail} canEdit={canEdit} editable={editable} saving={pending > 0}
+        onLock={(on) => { finishEditing(); run(updateBoard(boardId, { locked: on })) }}
         canUndo={history.undo.length > 0} canRedo={history.redo.length > 0} onUndo={undo} onRedo={redo}
         onRename={(title) => run(updateBoard(boardId, { title }))} onShare={() => setShareOpen(true)}
         zoom={zoom} onZoom={zoomTo} onFit={fit}
       />
       {error && <p className="bg-red-950/80 px-4 py-2 text-sm text-red-200" role="alert">{error}</p>}
       <div className="flex min-h-0 flex-1">
-        {canEdit && (
+        {editable && (
           <NoteToolbar
             selected={selected} editor={editing ? editor : null} onDragStart={onToolDown} hintFor={hint}
-            onBack={() => { finishEditing(); setSelection([]) }} theme={board.theme} onTheme={(theme) => run(updateBoard(boardId, { theme }))} onTrash={trashSelected}
+            onBack={() => { finishEditing(); setSelection([]) }} theme={board.theme} onTheme={(theme) => run(updateBoard(boardId, { theme }))} onCleanUp={cleanUp} onTrash={trashSelected}
             onToggleTitle={() => setField(selected[0], 'title', selected[0].title == null ? '' : null)}
             onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)} onUpload={() => pickFile()} onEditBoard={() => editBoard(selected[0])}
             onOpenTrash={() => setTrashOpen(true)} trashCount={trashed.length}
@@ -752,19 +776,19 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         <div
           ref={scroller}
           className="note-canvas relative min-w-0 flex-1 overflow-auto"
-          style={{ backgroundSize: `${22 * zoom}px ${22 * zoom}px` }}
+          style={{ backgroundSize: `${GRID * zoom}px ${GRID * zoom}px` }}
           onPointerDown={onCanvasPointerDown}
           onPointerMove={(e) => { if (inner.current) lastPoint.current = point(e) }}
           onContextMenu={onContextMenu}
-          onDragOver={(e) => { if (canEdit && e.dataTransfer.types.includes('Files')) e.preventDefault() }}
-          onDrop={(e) => { if (!canEdit || !e.dataTransfer.files.length) return; e.preventDefault(); const p = point(e); addFiles(e.dataTransfer.files, p.x - CARD_WIDTH / 2, p.y - 24) }}
-          onDoubleClick={(e) => { if (canEdit && !e.target.closest('[data-card-id]')) { const p = point(e); addCard('note', p.x - 20, p.y - 20) } }}
+          onDragOver={(e) => { if (editable && e.dataTransfer.types.includes('Files')) e.preventDefault() }}
+          onDrop={(e) => { if (!editable || !e.dataTransfer.files.length) return; e.preventDefault(); const p = point(e); addFiles(e.dataTransfer.files, p.x - CARD_WIDTH / 2, p.y - 24) }}
+          onDoubleClick={(e) => { if (editable && !e.target.closest('[data-card-id]')) { const p = point(e); addCard('note', p.x - 20, p.y - 20) } }}
         >
           <div style={{ width: width * zoom, height: height * zoom, minWidth: '100%', minHeight: '100%' }}>
             <div ref={inner} className="relative origin-top-left" style={{ width, height, transform: zoom === 1 ? undefined : `scale(${zoom})` }}>
               {top.map((card) => renderCard(card, false))}
               <Lines
-                lines={lines} rects={rects} width={width} height={height} selection={selection} drag={drag} editing={editing} valueRef={valueRef} canEdit={canEdit}
+                lines={lines} rects={rects} width={width} height={height} selection={selection} drag={drag} editing={editing} valueRef={valueRef} canEdit={editable}
                 onLineDown={onCardPointerDown} onEndDown={onEndDown} onBendDown={onBendDown} onLabelEdit={(line) => { setSelection([line.id]); setEditing(line.id) }}
               />
               {box && <div className="pointer-events-none absolute z-[200000] border border-white/60 bg-white/10" style={box} />}
