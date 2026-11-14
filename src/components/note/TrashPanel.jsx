@@ -8,6 +8,9 @@ const plain = (html) => new DOMParser().parseFromString(html ?? '', 'text/html')
 function summary(card, children) {
   if (card.type === 'note') return plain(card.html) || 'Empty note'
   if (card.type === 'heading') return card.text || 'Empty heading'
+  if (card.type === 'file') return `PDF: ${card.name}`
+  if (card.type === 'column') return `Column: ${card.title || note.newColumn}`
+  if (card.type === 'line') return card.label ? `Line: ${card.label}` : 'Line'
   if (card.type === 'todo') return card.title || card.items?.[0]?.text || 'Empty to-do list'
   return `Board: ${children.get(card.boardId)?.title || note.newBoard}`
 }

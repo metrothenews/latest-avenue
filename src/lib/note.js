@@ -7,6 +7,10 @@
 //   type "note": html · "todo": title, items [{ id, text, done }] · "heading": text · "board": boardId
 //   "column": title, collapsed (cards inside it carry `column` and `order` instead of using x, y)
 //   "line": from / to { card | null, x, y }, startArrow, endArrow, dashed, weight, label, bend
+//   "file": fileId, name, size, pages, thumb (a small picture of a PDF's first page)
+// - noteFiles/{fileId}: { board, name, type, size, parts, createdBy, createdAt }, and the file itself as
+//   base64 text in noteFiles/{fileId}/parts/{n} (a Firestore document holds at most 1 MiB). `board` is
+//   the board its card is on, which decides who may read it.
 // Team members read and write everything; everyone else can only read public boards.
 import { collection, deleteDoc, doc, getDoc, getDocs, increment, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db, deadline } from './team.js'
@@ -16,6 +20,10 @@ const BOARDS = 'noteBoards'
 const boardRef = (id) => doc(db, BOARDS, id)
 const cardsRef = (boardId) => collection(db, BOARDS, boardId, 'cards')
 const cardRef = (boardId, id) => doc(db, BOARDS, boardId, 'cards', id)
+const fileRef = (id) => doc(db, 'noteFiles', id)
+const partRef = (id, n) => doc(db, 'noteFiles', id, 'parts', String(n))
+const PART_CHARS = 240_000 // under 1 MiB even if every character took 4 bytes
+export const MAX_FILE_BYTES = 15 * 1024 * 1024
 
 export const newId = () => doc(collection(db, BOARDS)).id
 export const isBoardId = (id) => /^[\w-]{1,40}$/.test(id ?? '')
@@ -100,6 +108,7 @@ export async function moveCards(fromId, to, cards) {
     batch.set(cardRef(to.id, id), data.column ? data : { ...data, column: null, x: 40 + i * 24, y: 40 + i * 24 })
     batch.delete(cardRef(fromId, id))
     if (card.type === 'board') batch.update(boardRef(card.boardId), { parent: to.id })
+    if (card.type === 'file') batch.update(fileRef(card.fileId), { board: to.id })
   })
   // So the count under the board's icon is right before anyone opens it.
   batch.update(boardRef(to.id), { cardCount: increment(cards.filter((c) => !c.trashed).length) })
@@ -120,4 +129,49 @@ export async function setPublic(boardId, isPublic) {
     const kids = await deadline(getDocs(query(collection(db, BOARDS), where('parent', '==', id))))
     kids.forEach((d) => queue.push(d.id))
   }
+}
+
+// --- Files (PDFs). Stored as text in Firestore, so kept small: see MAX_FILE_BYTES. ---
+
+const toBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(reader.result.slice(reader.result.indexOf(',') + 1))
+  reader.onerror = () => reject(new Error("Couldn't read the file."))
+  reader.readAsDataURL(blob)
+})
+
+// Saves a file for a card on `boardId`. onProgress(fraction) as it uploads. Returns its ID.
+export async function uploadFile(boardId, file, email, onProgress = () => {}) {
+  const id = newId()
+  const text = await toBase64(file)
+  const parts = Math.max(1, Math.ceil(text.length / PART_CHARS))
+  // The entry first: the rules look it up to decide who may write and read the parts.
+  await deadline(setDoc(fileRef(id), { board: boardId, name: file.name, type: file.type, size: file.size, parts, createdBy: email, createdAt: new Date().toISOString() }))
+  for (let n = 0; n < parts; n += 4) {
+    const batch = [n, n + 1, n + 2, n + 3].filter((i) => i < parts)
+    await Promise.all(batch.map((i) => deadline(setDoc(partRef(id, i), { data: text.slice(i * PART_CHARS, (i + 1) * PART_CHARS) }), 120)))
+    onProgress(Math.min(1, (n + batch.length) / parts))
+  }
+  return id
+}
+
+// The file as a Blob. onProgress(fraction) as it downloads.
+export async function loadFile(fileId, onProgress = () => {}) {
+  const meta = (await deadline(getDoc(fileRef(fileId)))).data()
+  if (!meta) throw new Error('This file is no longer here.')
+  const chunks = []
+  for (let n = 0; n < meta.parts; n += 8) {
+    const batch = Array.from({ length: Math.min(8, meta.parts - n) }, (_, i) => deadline(getDoc(partRef(fileId, n + i)), 60))
+    chunks.push(...(await Promise.all(batch)).map((snap) => snap.data()?.data ?? ''))
+    onProgress(chunks.length / meta.parts)
+  }
+  // Through fetch, so a large file is decoded without blocking the page.
+  return (await fetch(`data:${meta.type || 'application/octet-stream'};base64,${chunks.join('')}`)).blob()
+}
+
+// Deletes a file for good (when its card is emptied from the trash).
+export async function deleteFile(fileId) {
+  const meta = (await deadline(getDoc(fileRef(fileId)))).data()
+  for (let n = 0; n < (meta?.parts ?? 0); n++) await deadline(deleteDoc(partRef(fileId, n))).catch(() => {})
+  await deadline(deleteDoc(fileRef(fileId)))
 }

@@ -10,11 +10,12 @@ import TrashPanel from '../../components/note/TrashPanel.jsx'
 import ShareDialog from '../../components/note/ShareDialog.jsx'
 import Lines from '../../components/note/Lines.jsx'
 import ContextMenu from '../../components/note/ContextMenu.jsx'
+import PdfViewer from '../../components/note/PdfViewer.jsx'
 import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { ensureOwnerMember, getMembership } from '../../lib/team.js'
 import {
-  HOME, ancestors, createBoard, ensureHome, isBoardId, moveCards, newId, patchCard, patchCards, removeCard,
-  setCard, setPublic, updateBoard, watchBoard, watchCards, watchChildren,
+  HOME, MAX_FILE_BYTES, ancestors, createBoard, deleteFile, ensureHome, isBoardId, moveCards, newId, patchCard, patchCards, removeCard,
+  setCard, setPublic, updateBoard, uploadFile, watchBoard, watchCards, watchChildren,
 } from '../../lib/note.js'
 import { shiftLine } from '../../lib/noteGeometry.js'
 import { CARD_WIDTH, COLUMN_WIDTH, MAX_WIDTH, MIN_WIDTH, ZOOM_MAX, ZOOM_MIN, colorOf, note } from '../../data/note.js'
@@ -49,6 +50,10 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   const [menu, setMenu] = useState(null) // right-click menu: { x, y, items }
   const [trashOpen, setTrashOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [viewing, setViewing] = useState(null) // the PDF card open in the viewer
+  const [uploads, setUploads] = useState([]) // PDFs on their way up: [{ id, name, done (0–1) }]
+  const picker = useRef(null)
+  const pickAt = useRef(null) // where on the board a picked file should go
   const scroller = useRef(null)
   const inner = useRef(null)
   const valueRef = useRef(null) // set by the card being edited: () => fields to save
@@ -178,6 +183,40 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     if (type !== 'line') setEditing(card.id)
   }
 
+  // Adds PDFs to the board at (x, y): uploads each, then puts its card down.
+  async function addFiles(files, x, y) {
+    setError('')
+    for (const [i, file] of [...files].entries()) {
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { setError(note.onlyPdf); continue }
+      if (file.size > MAX_FILE_BYTES) { setError(`${file.name}: ${note.tooBig}`); continue }
+      const uploadId = newId()
+      setUploads((u) => [...u, { id: uploadId, name: file.name, done: 0 }])
+      try {
+        const { pdfPreview } = await import('../../lib/pdfThumb.js')
+        const [preview, fileId] = await Promise.all([
+          pdfPreview(file),
+          uploadFile(boardId, file, email, (done) => setUploads((u) => u.map((x) => (x.id === uploadId ? { ...x, done } : x)))),
+        ])
+        const card = {
+          id: newId(), type: 'file', fileId, name: file.name, size: file.size, pages: preview.pages, thumb: preview.thumb,
+          x: Math.max(0, Math.round(x + i * 24)), y: Math.max(0, Math.round(y + i * 24)), w: CARD_WIDTH, z: api.current.topZ() + 1,
+          color: 'default', trashed: false, createdBy: email, createdAt: new Date().toISOString(),
+        }
+        api.current.addCards([card])
+      } catch (err) {
+        setError(`Couldn't add ${file.name}: ${err.message}`)
+      } finally {
+        setUploads((u) => u.filter((x) => x.id !== uploadId))
+      }
+    }
+  }
+  // Opens the file picker; the PDF lands at (x, y), or in the middle of what's on screen.
+  function pickFile(at) {
+    const el = scroller.current
+    pickAt.current = at ?? { x: (el.scrollLeft + el.clientWidth / 2) / zoom - CARD_WIDTH / 2, y: (el.scrollTop + el.clientHeight / 3) / zoom }
+    picker.current.click()
+  }
+
   // Leaves edit mode, saving what changed.
   function finishEditing() {
     if (!editing) return
@@ -200,8 +239,9 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     setSelection([])
   }
 
-  // Copies of cards for duplicate and paste. Boards and columns aren't copied (they hold other things).
-  const copyable = (list) => list.filter((c) => c.type !== 'board' && c.type !== 'column')
+  // Copies of cards for duplicate and paste. Boards and columns aren't copied (they hold other
+  // things), nor are files (a file belongs to one card).
+  const copyable = (list) => list.filter((c) => c.type !== 'board' && c.type !== 'column' && c.type !== 'file')
   function copies(list, dx, dy) {
     const z = topZ()
     return list.map((c, i) => {
@@ -433,7 +473,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     const card = all.get(d.cardId)
     if (!d.moved) {
       // A click on the one card that was already selected starts editing it.
-      if (d.wasAlone && card && card.type !== 'board') setEditing(card.id)
+      if (d.wasAlone && card && card.type !== 'board' && card.type !== 'file') setEditing(card.id)
       return
     }
     const moving = shown.filter((c) => d.ids.includes(c.id))
@@ -501,6 +541,8 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         one?.type === 'board' && { label: 'Copy link to this board', onSelect: () => navigator.clipboard?.writeText(`${window.location.origin}/team/note/${card.boardId}`) },
         one?.type === 'board' && { label: 'Rename', onSelect: () => setEditing(card.id) },
         one?.type === 'board' && null,
+        one?.type === 'file' && { label: 'Open', hint: '↵', onSelect: () => setViewing(card) },
+        one?.type === 'file' && null,
         { label: 'Cut', hint: '⌘X', disabled: !copyable(sel).length, onSelect: () => { api.current.copy(); api.current.trashSelected() } },
         { label: 'Copy', hint: '⌘C', disabled: !copyable(sel).length, onSelect: act('copy') },
         { label: 'Duplicate', hint: '⌘D', disabled: !copyable(sel).length, onSelect: act('duplicate') },
@@ -526,13 +568,14 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         { label: 'New line', onSelect: add('line') },
         { label: 'New board', onSelect: add('board') },
         { label: 'New column', onSelect: add('column') },
+        { label: note.uploadPdf, onSelect: () => pickFile(p) },
       ]
     }
     setMenu({ x: e.clientX, y: e.clientY, items })
   }
 
   // --- Keyboard ---
-  api.current = { drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection }
+  api.current = { addCards, topZ, drop, dropTarget, cardAt, point, undo, redo, finishEditing, trashSelected, duplicate, copy, paste, restack, nudge, fit, zoomTo, zoom, selected, editing, shown, open, setEditing, setSelection, setViewing }
   useEffect(() => {
     function onKey(e) {
       const a = api.current
@@ -564,6 +607,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
       else if (e.key === 'Enter' && a.selected.length === 1) {
         e.preventDefault()
         if (a.selected[0].type === 'board') a.open(a.selected[0].boardId)
+        else if (a.selected[0].type === 'file') a.setViewing(a.selected[0])
         else a.setEditing(a.selected[0].id)
       }
     }
@@ -598,6 +642,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
     const isEditing = editing === card.id
     const moving = drag?.kind === 'move' && drag.moved && drag.ids.includes(card.id)
     const framed = card.type === 'note' || card.type === 'todo'
+    const isFile = card.type === 'file'
     const kids = card.type === 'column' ? kidsOf(card.id) : []
     const w = drag?.kind === 'resize' && drag.cardId === card.id ? drag.w : widthOf(card)
     const style = stacked
@@ -612,17 +657,19 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
           stacked ? '' : 'absolute', 'text-sm',
           framed ? `rounded-md border p-4 ${stacked ? '' : 'shadow-lg shadow-black/30'} ${colorOf(card.color).card}` : '',
           card.type === 'column' ? `rounded-lg border shadow-lg shadow-black/30 ${colorOf(card.color).card}` : '',
+          isFile ? `rounded-md border ${stacked ? '' : 'shadow-lg shadow-black/30'} ${colorOf(card.color).card}` : '',
           card.type === 'heading' || card.type === 'board' ? 'rounded-md p-2' : '',
           stacked && card.type === 'board' ? 'mx-auto w-32' : '',
           isSelected ? 'outline outline-2 outline-white' : dropOn === card.id ? 'outline outline-2 outline-dashed outline-white/70' : '',
           moving && stacked ? 'pointer-events-none' : '',
-          canEdit ? (isEditing ? 'cursor-text' : 'cursor-grab touch-none select-none') : (card.type === 'board' ? 'cursor-pointer' : ''),
+          canEdit ? (isEditing ? 'cursor-text' : 'cursor-grab touch-none select-none') : (card.type === 'board' || isFile ? 'cursor-pointer' : ''),
         ].join(' ')}
         onPointerDown={(e) => onCardPointerDown(e, card)}
-        onClick={() => { if (!canEdit && card.type === 'board') open(card.boardId) }}
+        onClick={() => { if (!canEdit && card.type === 'board') open(card.boardId); if (!canEdit && isFile) setViewing(card) }}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (card.type === 'board') open(card.boardId)
+          else if (isFile) setViewing(card)
           else if (canEdit && !isEditing) setEditing(card.id)
         }}
       >
@@ -644,7 +691,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
             )}
           </>
         )}
-        {canEdit && isSelected && !stacked && (framed || card.type === 'column') && selection.length === 1 && (
+        {canEdit && isSelected && !stacked && (framed || isFile || card.type === 'column') && selection.length === 1 && (
           <span onPointerDown={(e) => onResizeDown(e, card)} className="absolute bottom-0 right-0 h-4 w-4 cursor-ew-resize touch-none rounded-br-md border-b-2 border-r-2 border-white/70" aria-hidden="true" />
         )}
       </div>
@@ -666,7 +713,7 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
             selected={selected} editor={editing ? editor : null} onDragStart={onToolDown} hintFor={hint}
             onBack={() => { finishEditing(); setSelection([]) }} onColor={setColor} onTrash={trashSelected}
             onToggleTitle={() => setField(selected[0], 'title', selected[0].title == null ? '' : null)}
-            onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)}
+            onRename={() => setEditing(selected[0].id)} onLine={(field, value) => setField(selected[0], field, value)} onUpload={() => pickFile()}
             onOpenTrash={() => setTrashOpen(true)} trashCount={trashed.length}
           />
         )}
@@ -677,6 +724,8 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
           onPointerDown={onCanvasPointerDown}
           onPointerMove={(e) => { if (inner.current) lastPoint.current = point(e) }}
           onContextMenu={onContextMenu}
+          onDragOver={(e) => { if (canEdit && e.dataTransfer.types.includes('Files')) e.preventDefault() }}
+          onDrop={(e) => { if (!canEdit || !e.dataTransfer.files.length) return; e.preventDefault(); const p = point(e); addFiles(e.dataTransfer.files, p.x - CARD_WIDTH / 2, p.y - 24) }}
           onDoubleClick={(e) => { if (canEdit && !e.target.closest('[data-card-id]')) { const p = point(e); addCard('note', p.x - 20, p.y - 20) } }}
         >
           <div style={{ width: width * zoom, height: height * zoom, minWidth: '100%', minHeight: '100%' }}>
@@ -697,13 +746,25 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
         </div>
       )}
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      <input ref={picker} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addFiles(e.target.files, pickAt.current.x, pickAt.current.y); e.target.value = '' }} />
+      {uploads.length > 0 && (
+        <div className="glass fixed bottom-4 right-4 z-[65] w-72 space-y-2 bg-neutral-900/95 p-4 text-sm" role="status">
+          {uploads.map((u) => (
+            <div key={u.id}>
+              <p className="truncate">{note.uploading} {u.name}</p>
+              <div className="mt-1.5 h-1.5 rounded-full bg-white/10"><div className="h-full rounded-full bg-white" style={{ width: `${Math.round(u.done * 100)}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      <PdfViewer card={viewing} onClose={() => setViewing(null)} />
       <TrashPanel
         open={trashOpen} onClose={() => setTrashOpen(false)} cards={trashed} children={children}
         onRestore={(id) => patch([{ id, before: { trashed: true }, after: { trashed: false } }])}
         onEmpty={() => {
           // A deleted column takes the cards inside it along for good.
           const gone = [...trashed, ...cards.filter((c) => c.column && all.get(c.column)?.trashed && !c.trashed)]
-          gone.forEach((c) => run(removeCard(boardId, c.id)))
+          gone.forEach((c) => run(removeCard(boardId, c.id).then(() => (c.type === 'file' ? deleteFile(c.fileId) : null))))
           setHistory({ undo: [], redo: [] })
         }}
       />
