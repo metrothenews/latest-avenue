@@ -20,6 +20,7 @@ React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeSc
 10. [Owner login](#owner-login)
 11. [Meta command-line tool](#meta-command-line-tool)
 12. [Hosting](#hosting)
+13. [Data layer](#data-layer-ready-for-an-mcp-later)
 13. [Conventions](#conventions)
 14. [Open TODOs](#open-todos)
 15. [Verifying changes](#verifying-changes)
@@ -448,6 +449,8 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 - **Lines and arrows:** drag **Line** out, then select it and drag an end onto a card to attach it; attached ends follow the card. Drag the middle handle to curve it (drag it back to straighten). The toolbar sets an arrowhead at the start and / or end, dashed, weight (3 thicknesses) and a label (double-clicking the line also edits the label). Lines aren't counted as cards.
 - **Editing a board (name and icon):** select a board and press **Edit** (or right-click → Edit name and icon). Its name is selected, ready to type over, and a small icon menu opens beside its tile (under or over it on a phone, clear of the keyboard). The menu has a search box at the top and 50 icons at a time: a featured set to begin with (`featuredIcons` in `data/note.js`), or the best 50 matches as you type, searched across the whole library. Picking an icon applies at once and leaves the cursor in the name. Esc, or clicking the board, saves the name and closes the menu. "None" goes back to the plain four-squares tile. The icons are **Lucide** (open source, ISC licence; the `lucide` package, loaded only when the menu first opens). The chosen icon's drawing is saved on the board itself, so showing it needs no icon library. (Columns keep a plain **Rename**.)
 - **Theme:** one colour per board, chosen with **Theme** in the toolbar (its button shows the current colour). It colours **only the icons on the board tiles sitting on that board**; the tiles themselves, cards, columns, lines and the background are always grey. The default, "Light grey", is the light colour the icons have always had. There are no per-card colours any more (an earlier version had a Color button on every card; colours saved then are ignored). `colors` in `data/note.js` lists the themes.
+- **Lock:** the padlock switch beside the board's name (team members only) makes that board read-only for everyone until someone switches it back: no toolbar, no undo, no renaming, nothing can be dragged or edited, and the status reads "Locked: read-only". Opening boards and PDFs, zooming and moving around still work. It's there to stop accidental changes, not for security (any team member can unlock). Stored as `locked` on the board.
+- **Clean up** (toolbar): moves every card on the board, and every loose line end, to the nearest dot of the background grid (`GRID` in `src/data/note.js`, 22px). Cards in columns stay in their stack. It's one action, so one Undo puts everything back; it is not a snapping mode, cards can still be dragged anywhere afterwards.
 - **PDFs:** add one with **Upload** in the toolbar, right-click → Upload a PDF, or by dragging files from the computer onto the board (several at once is fine). A PDF card shows a picture of the first page, the file name, page count and size; double-click it (Enter, a second tap on a phone, or one click for viewers) to open it in the **viewer**: full-screen, every page drawn by the site itself (pdf.js) so it works the same on phones and computers, with the pages in one scrolling column, zoom (100 / 150 / 200 / 300%, keeping your place) and a download button. **A board fetches its PDFs in the background as soon as it opens**, in one request each, and keeps them in memory while the site is open, so opening one is quick; the person who uploaded a file never downloads it back. (Preloading is skipped when the browser's data-saver is on.) It moves, resizes, goes into columns and boards, and trashes like any card. **Limit: 15 MB per PDF** (`MAX_FILE_BYTES` in `lib/note.js`), because on the free plan the file is stored as text in Firestore, not in real file storage; only PDFs are accepted for now. PDF cards can't be copied or duplicated (a file belongs to one card). Emptying the trash deletes the stored file for good.
 - **Right-click:** on a card: Cut, Copy, Duplicate, Bring to front, Send to back, Move to trash (a board also gets Open, Open in new tab, Copy link, Rename). On the canvas: Undo, Redo, Paste, Select all, and New note / to-do / heading / line / board / column at that spot.
 - **Copy and paste:** ⌘/Ctrl+C, X, V. Pasting puts the cards under the pointer, and works across boards while the site stays open (it's the app's own clipboard, not the computer's). Boards and columns can't be copied or duplicated.
@@ -459,7 +462,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ### How it's stored (Firestore)
 
-- `noteBoards/{id}` = `{ title, parent, theme, icon, public, cardCount, createdBy, createdAt }`; `home` is the top board. `icon` is `{ name, shapes: [{ tag, …attributes }] }`: only plain SVG shapes are ever drawn from it.
+- `noteBoards/{id}` = `{ title, parent, theme, icon, locked, public, cardCount, createdBy, createdAt }`; `home` is the top board. `icon` is `{ name, shapes: [{ tag, …attributes }] }`: only plain SVG shapes are ever drawn from it.
 - `noteBoards/{id}/cards/{cardId}` = `{ type, x, y, w, z, color, trashed, … }` with `html` (note), `title` + `items` (to-do), `text` (heading), `boardId` (a board's icon), `title` + `collapsed` (column; cards inside it carry `column` and `order`), `from` / `to` / `startArrow` / `endArrow` / `dashed` / `weight` / `label` / `bend` (line; an end is `{ card }` when attached, else `{ x, y }`), or `fileId` / `name` / `size` / `pages` / `thumb` (a PDF).
 - `noteFiles/{fileId}` = `{ board, name, type, size, parts, createdBy, createdAt }`, with the file as base64 text in `noteFiles/{fileId}/parts/{n}` (about 180 KB of file per part). `board` is the board the card is on; it follows the card when it's moved into another board.
 - **Security (`firestore.rules`):** team members read and write boards, cards and files; anyone can read a board with `public: true`, its cards, and the files whose `board` is that board; nobody else can write. **Deploy the rules** (`firebase deploy --only firestore:rules`) or nobody but Sam can use it.
@@ -597,6 +600,27 @@ Every deploy renames the script files in `/assets`. A tab opened before the depl
 - `lib/freshness.js` listens for a script that fails to load and reloads the page once (at most once a minute), which picks up the current version.
 - `components/layout/ErrorBoundary.jsx` wraps all pages: any crash shows "Something went wrong" with a Reload button, never a blank screen.
 
+## Data layer (ready for an MCP later)
+
+Sam wants to be able to build an MCP server for the site later (so an AI assistant can read and change the site's data). Nothing is built yet; the site is kept in a shape that makes it straightforward:
+
+- **Everything is plain documents in Firestore**, and each kind of data has **one lib file** that holds every read and write as a small named function. No page or component touches the database directly. An MCP tool is then roughly one of these functions with a description.
+
+| Data | Firestore | Lib file | Functions an MCP tool would mirror |
+| --- | --- | --- | --- |
+| Team list, welcome message | `teamMembers/{email}`, `portal/welcome` | `src/lib/team.js` | `listMembers`, `addMember`, `removeMember`, `getWelcome`, `saveWelcome` |
+| Team messages | `chats/{chatId}/messages` | `src/lib/teamChat.js` | `watchChats`, `watchMessages`, `sendMessage` |
+| Assignments doc | `portal/*` | `src/lib/assignments.js` | `getAssignmentsDoc`, `getDocInfo`, `publishDoc` |
+| Note boards, cards, files | `noteBoards`, `…/cards`, `noteFiles`, `…/parts` | `src/lib/note.js` | `createBoard`, `updateBoard`, `setCard`, `patchCards`, `removeCard`, `moveCards`, `setPublic`, `uploadFile`, `loadFile` |
+| Campaign runs | `campaignRuns`, `metaUploads`, `pixelEvents` | `src/lib/campaignRuns.js` | `listRuns`, `saveRun`, `setRunArchived`, `deleteRun` |
+| Meta Ads (not in Firestore) | Meta Graph API | `src/lib/meta.js`, `metaAnalytics.js` | also usable from the terminal: see [Meta command-line tool](#meta-command-line-tool) |
+
+- **Document shapes are written down** in each feature's section of this file ("How it's stored"). Keep them current: they are the MCP's schema.
+- **When the MCP is built** it will be a small separate server (the first real backend, so only when Sam asks). It would talk to the same Firestore with the Firebase Admin SDK and a service-account key, which skips `firestore.rules`, so it must do its own permission checks. It can run on Sam's Mac for free, or hosted (Cloud Functions / Cloud Run need the paid Blaze plan).
+- **Keep it this way:** new features put their reads and writes in a lib file as named functions, keep any rule that data depends on (counts, ordering, file parts) inside that function rather than in a component, and document the document shape here.
+
+---
+
 ## Conventions
 
 - **Brand name is lowercase: "latest avenue".** Use `site.name` in JSX instead of hard-coding it.
@@ -606,6 +630,7 @@ Every deploy renames the script files in `/assets`. A tab opened before the depl
 - **Imports use explicit extensions** (`'./Button.jsx'`).
 - **Accessibility:** real `<button>`s for actions and `<a>`/`<Link>` for navigation, labels on all inputs, `aria-expanded` / `aria-pressed` / `aria-current` where relevant, Esc closes modals.
 - **No fabricated content.** Stats, quotes and testimonials must come from Sam or the artists. Use `[bracketed]` placeholders until then.
+- **All database access lives in `src/lib/`.** Pages and components never call Firestore themselves; they call a named function in a lib file (see [Data layer](#data-layer-ready-for-an-mcp-later)).
 - **No animations or backend** unless asked. (Sam asked for Firebase auth for the owner-only area.)
 
 ---

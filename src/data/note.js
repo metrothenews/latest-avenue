@@ -13,6 +13,10 @@ export const note = {
   notOnTeam: "This account isn't on the team list, and this board isn't shared.",
   missing: "This board doesn't exist, or it isn't shared.",
   viewOnly: 'View only',
+  lockLabel: 'Lock this board (read-only)',
+  lockHint: 'Lock: make this board read-only so nothing is changed by accident',
+  unlockHint: 'Locked. Switch off to edit again',
+  lockedStatus: 'Locked: read-only',
   saving: 'Saving…',
   saved: 'Saved',
   dragMe: 'Drag me',
@@ -30,6 +34,8 @@ export const note = {
   iconHint: 'Search for more.',
   iconFailed: "Couldn't load the icons. Check your connection and try again.",
   iconCredit: 'Icons: Lucide (open source).',
+  cleanUp: 'Clean up',
+  cleanUpHint: 'Clean up: move everything to the nearest dot on the grid (Undo puts it back)',
   theme: 'Theme',
   themeTitle: 'Board theme',
   upload: 'Upload',
@@ -68,6 +74,7 @@ export const tools = [
 ]
 
 export const CARD_WIDTH = 300
+export const GRID = 22 // spacing of the dots on the board (also set in .note-canvas in index.css)
 export const COLUMN_WIDTH = 320
 export const ZOOM_MIN = 0.2
 export const ZOOM_MAX = 2

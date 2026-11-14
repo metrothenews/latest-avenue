@@ -1,5 +1,6 @@
 // latest avenue note: boards of cards on Firestore (see firestore.rules).
 // - noteBoards/{boardId}: { title, parent (boardId | null), theme, icon, iconColor, public, cardCount, createdBy, createdAt }
+//   `locked: true` makes the board read-only for the team too (the lock switch by its name).
 //   `theme` is the colour of the icons on the board tiles sitting on this board (see `colors` in
 //   data/note.js; grey when unset). Everything else on a board is grey.
 //   `icon` is { name, shapes: [{ tag, …attributes }] } (the drawing itself, so showing it needs no icon library).
