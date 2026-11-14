@@ -1,11 +1,12 @@
 // A picture of a PDF's first page, for its card on a note board. Loaded only when a PDF is added.
+import { loadPdfjs } from './pdf.js'
+
 const WIDTH = 600 // pixels: twice the card's width, so it's sharp
 
 // → { thumb: a JPEG data: URL (or '' if the PDF couldn't be drawn), pages: number of pages }
 export async function pdfPreview(file) {
   try {
-    const [pdfjs, { default: workerSrc }] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')])
-    pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
+    const pdfjs = await loadPdfjs()
     const task = pdfjs.getDocument({ data: await file.arrayBuffer() })
     const doc = await task.promise
     const page = await doc.getPage(1)

@@ -16,7 +16,7 @@ import { useAuth } from '../../components/auth/AuthProvider.jsx'
 import { ensureOwnerMember, getMembership } from '../../lib/team.js'
 import {
   HOME, MAX_FILE_BYTES, ancestors, createBoard, deleteFile, ensureHome, isBoardId, moveCards, newId, patchCard, patchCards, removeCard,
-  setCard, setPublic, updateBoard, uploadFile, watchBoard, watchCards, watchChildren,
+  preloadFiles, setCard, setPublic, updateBoard, uploadFile, watchBoard, watchCards, watchChildren,
 } from '../../lib/note.js'
 import { shiftLine } from '../../lib/noteGeometry.js'
 import { CARD_WIDTH, COLUMN_WIDTH, MAX_WIDTH, MIN_WIDTH, ZOOM_MAX, ZOOM_MIN, colorOf, note } from '../../data/note.js'
@@ -105,6 +105,14 @@ function Board({ boardId, canEdit, email, signedIn, onSignIn, onSignOut }) {
   useEffect(() => {
     if (canEdit && board && board.cardCount !== count) updateBoard(boardId, { cardCount: count }).catch(() => {})
   }, [canEdit, board, boardId, count])
+
+  // Fetch this board's PDFs (and the PDF reader) in the background, so opening one is quick.
+  const fileIds = shown.filter((c) => c.type === 'file').map((c) => c.fileId).join(' ')
+  useEffect(() => {
+    if (!fileIds) return
+    preloadFiles(fileIds.split(' '))
+    import('../../lib/pdf.js').then((m) => m.loadPdfjs()).catch(() => {})
+  }, [fileIds])
 
   // Measure where every card is drawn, so lines can attach to them.
   useLayoutEffect(() => {
