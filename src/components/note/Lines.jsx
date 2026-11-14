@@ -1,6 +1,5 @@
 import LineEdit from './LineEdit.jsx'
 import { lineShape, liveLine } from '../../lib/noteGeometry.js'
-import { colorOf } from '../../data/note.js'
 
 const handle = 'fill-white stroke-neutral-900 cursor-grab touch-none'
 
@@ -14,7 +13,7 @@ export default function Lines({ lines, rects, width, height, selection, drag, ed
         {shapes.map(({ line, shape }) => {
           const on = selection.includes(line.id)
           return (
-            <g key={line.id} data-card-id={line.id} data-line="" className={colorOf(line.color).line}>
+            <g key={line.id} data-card-id={line.id} data-line="" className="text-white">
               {/* A wide invisible stroke makes the line easy to grab. */}
               <path d={shape.path} fill="none" stroke="transparent" strokeWidth="16" className={canEdit ? 'pointer-events-auto cursor-grab touch-none' : ''} onPointerDown={(e) => onLineDown(e, line)} onDoubleClick={(e) => { e.stopPropagation(); if (canEdit) onLabelEdit(line) }} />
               {on && <path d={shape.path} fill="none" stroke="white" strokeOpacity="0.35" strokeWidth={(line.weight ?? 2) * 1.5 + 6} strokeLinecap="round" />}

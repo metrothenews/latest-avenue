@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { colors, note, tools } from '../../data/note.js'
+import { createPortal } from 'react-dom'
+import { colorOf, colors, note, tools } from '../../data/note.js'
 
 // Simple line icons for the tool tiles and buttons.
 const icons = {
@@ -42,10 +43,11 @@ function Tool({ type, label, onDragStart, hint }) {
   )
 }
 
-// The left toolbar. With nothing selected it holds the card types to drag out and the trash;
+// The left toolbar. With nothing selected it holds the card types to drag out, Upload, the board's
+// Theme (one colour for everything on the board) and the trash;
 // with cards selected it shows their options; while a note is being edited, text formatting.
-export default function NoteToolbar({ selected, editor, onDragStart, hintFor, onBack, onColor, onTrash, onToggleTitle, onRename, onLine, onEditBoard, onUpload, onOpenTrash, trashCount }) {
-  const [palette, setPalette] = useState(false)
+export default function NoteToolbar({ selected, editor, theme, onTheme, onDragStart, hintFor, onBack, onTrash, onToggleTitle, onRename, onLine, onEditBoard, onUpload, onOpenTrash, trashCount }) {
+  const [palette, setPalette] = useState(null) // where the theme menu is open: { left, top }
   const single = selected.length === 1 ? selected[0] : null
 
   const toggle = (label, icon, on, run) => (
@@ -75,19 +77,6 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
     content = (
       <>
         <button type="button" onClick={onBack} className={tile} aria-label="Deselect"><Icon name="back" /></button>
-        <div className="relative">
-          <button type="button" onClick={() => setPalette((p) => !p)} aria-expanded={palette} className={tile}>
-            <span className="h-5 w-5 rounded border border-white/40 bg-gradient-to-br from-blue-500 via-pink-500 to-yellow-500" aria-hidden="true" />
-            Color
-          </button>
-          {palette && (
-            <div className="glass absolute left-full top-0 z-30 ml-2 grid w-44 grid-cols-5 gap-2 bg-neutral-900/90 p-3">
-              {colors.map((c) => (
-                <button key={c.key} type="button" onClick={() => { onColor(c.key); setPalette(false) }} aria-label={c.label} title={c.label} className={`h-6 w-6 rounded border border-white/30 ${c.swatch}`} />
-              ))}
-            </div>
-          )}
-        </div>
         {single?.type === 'todo' && <button type="button" onClick={onToggleTitle} aria-pressed={single.title != null} className={`${tile} ${single.title != null ? 'bg-white/15 text-white' : ''}`}><Icon name="title" />Title</button>}
         {single?.type === 'board' && <button type="button" onClick={onEditBoard} className={tile}><Icon name="rename" />Edit</button>}
         {single?.type === 'column' && <button type="button" onClick={onRename} className={tile}><Icon name="rename" />Rename</button>}
@@ -109,6 +98,30 @@ export default function NoteToolbar({ selected, editor, onDragStart, hintFor, on
         {tools.map((t) => <Tool key={t.type} {...t} onDragStart={onDragStart} hint={hintFor === t.type} />)}
         <hr className="mx-2 my-1 border-white/10" />
         <button type="button" onClick={onUpload} className={tile} aria-label={note.uploadPdf} title={note.uploadPdf}><Icon name="upload" />{note.upload}</button>
+        {/* The button shows the board's current theme colour. */}
+        <button
+          type="button" aria-expanded={Boolean(palette)} aria-label={`${note.themeTitle}: ${colorOf(theme).label}. Change`} title={note.themeTitle} className={tile}
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPalette((p) => (p ? null : { left: r.right + 8, top: Math.max(8, Math.min(r.top, window.innerHeight - 184)) })) }}
+        >
+          <span className={`h-5 w-5 rounded-full border border-white/50 ${colorOf(theme).swatch}`} aria-hidden="true" />
+          {note.theme}
+        </button>
+        {/* On <body>: the toolbar's frosted background would otherwise trap a fixed menu inside it. */}
+        {palette && createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onPointerDown={() => setPalette(null)} aria-hidden="true" />
+            <div role="radiogroup" aria-label={note.themeTitle} className="glass fixed z-50 grid w-44 grid-cols-3 gap-2 bg-neutral-900/95 p-3 shadow-xl" style={palette}>
+              {colors.map((c) => (
+                <button
+                  key={c.key} type="button" role="radio" aria-checked={colorOf(theme).key === c.key} aria-label={c.label} title={c.label}
+                  onClick={() => { onTheme(c.key); setPalette(null) }}
+                  className={`h-10 rounded-lg border ${c.swatch} ${colorOf(theme).key === c.key ? 'border-white ring-2 ring-white' : 'border-white/30'}`}
+                />
+              ))}
+            </div>
+          </>,
+          document.body,
+        )}
         <button type="button" onClick={onOpenTrash} className={`${tile} mt-auto`}>
           <Icon name="trash" />
           {note.trash}{trashCount > 0 && ` (${trashCount})`}

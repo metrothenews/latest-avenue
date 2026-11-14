@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconShapes } from './BoardIcon.jsx'
 import { fieldClass } from '../ui/fieldStyles.js'
-import { featuredIcons, iconColors, note } from '../../data/note.js'
+import { featuredIcons, note } from '../../data/note.js'
 
 const SHOWN = 50 // icons offered at once: the featured ones, or the best matches for a search
 const WIDTH = 296
@@ -49,10 +49,10 @@ function place(tile, height) {
   return { left, top: Math.max(8, tile.top - GAP - tall), maxHeight: Math.max(140, above) }
 }
 
-// A small menu beside a board's tile for choosing its icon and the icon's colour, shown while the
-// board's name is being edited. It never takes the keyboard away from the name by itself; the
-// search box is there to click into. `anchorId`: the board's card; onChange({ icon, iconColor })
-// saves straight away.
+// A small menu beside a board's tile for choosing its icon, shown while the board's name is being
+// edited. (The icon's colour comes from the theme of the board the tile is on.) It never takes the keyboard away from the name by itself; the
+// search box is there to click into. `anchorId`: the board's card; onChange({ icon }) saves
+// straight away.
 export default function IconMenu({ board, anchorId, onChange }) {
   const [icons, setIcons] = useState(null)
   const [failed, setFailed] = useState(false)
@@ -100,16 +100,6 @@ export default function IconMenu({ board, anchorId, onChange }) {
     >
       <label htmlFor="icon-search" className="sr-only">{note.iconSearch}</label>
       <input id="icon-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={note.iconSearch} className={`${fieldClass(false)} shrink-0 !px-3 !py-2`} />
-
-      <div className="mt-3 flex shrink-0 flex-wrap gap-1.5" role="radiogroup" aria-label={note.iconColor}>
-        {iconColors.map((c) => (
-          <button
-            key={c.key} type="button" role="radio" aria-checked={(board.iconColor ?? 'auto') === c.key} aria-label={`${note.iconColor}: ${c.label}`} title={c.label}
-            onPointerDown={keepFocus} onClick={() => onChange({ iconColor: c.key === 'auto' ? null : c.key })}
-            className={`flex h-6 w-6 items-center justify-center rounded-full border ${c.swatch} ${(board.iconColor ?? 'auto') === c.key ? 'border-white ring-2 ring-white' : 'border-white/30'}`}
-          >{c.key === 'auto' && <span className="text-[9px] font-bold leading-none text-white">A</span>}</button>
-        ))}
-      </div>
 
       <div className="mt-3 max-h-52 min-h-[2.5rem] flex-1 overflow-y-auto pr-0.5">
         {failed && <p className="text-sm text-red-300/90" role="alert">{note.iconFailed}</p>}
