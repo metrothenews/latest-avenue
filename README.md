@@ -220,6 +220,8 @@ Defined in `src/App.jsx`.
 | `/team/assignments` | Team assignments: one doc shown whole (people on the team list) | TeamLayout | team portal header |
 | `/team/note` | The note home board with a welcome pop-up over it | none (full screen) | **no** (unlisted) |
 | `/team/note/home`, `/team/note/:boardId` | A note board. Team members edit; anyone with the link can view a board that has been shared | none (full screen) | team portal header ("Note") |
+| `/team/crew` | Crew Login: Google sign-in for people on the crew list | none (full screen) | **no** (share the address with the crew) |
+| `/team/note/welcome` | The crew welcome (fades in line by line), then on to the boards | none (full screen) | reached from `/team/crew` |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
 | `/signup`, `/reset-password` | redirect to `/login` | — | no (removed) |
 | `*` | NotFound | SiteLayout | — |
@@ -415,6 +417,20 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ---
 
+## Crew
+
+People working on a project (separate from the team). Sam adds them in the **Crew** section of `/admin/team`: first name, last name, project, role, phone number (optional) and Google account email. Adding the same email again replaces that person's entry; **Remove** takes their access away.
+
+- **`/team/crew` ("Crew Login")**: Google sign-in. If the email is on the crew list the person goes on to their welcome. If it isn't, they see: "Sorry, looks like we don't have your account yet. Please reach out to Sam at sjr9969@nyu.edu or try to log in with a different email." with a button to sign in with another account. Sam and team members who aren't on the crew list go straight to the boards.
+- **`/team/note/welcome`**: an empty page (just the background), then the welcome fades in one line at a time, two seconds a line: Hello / first name / your role is / role / on project. / Welcome. Then the page fades out and `/team/note/home` opens. A faint **Skip** sits in the corner. Opening this address without a crew sign-in goes back to `/team/crew`. (Sam asked for this animation; the timing is `secondsPerLine` in `src/data/crew.js`.)
+- **What the crew can do:** look at every note board, card and PDF, read-only ("View only" in the header). They can't change anything and can't open the team portal, messages, assignments or admin.
+- **Link preview:** crawlers don't run JavaScript, so the build writes `dist/team/crew.html`, a copy of `index.html` titled "Crew Login" (`linkPreviews` in `vite.config.js`; any page in `src/data/seo.js` with `preview: true` gets one). Firebase Hosting serves it at `/team/crew`.
+- **Stored** in `crew/{email}` = `{ email, firstName, lastName, project, role, phone, addedAt }` (`src/lib/crew.js`). One entry per email, so one project and role per person for now.
+- **Security (`firestore.rules`):** only Sam can list, add or remove crew; each person can read only their own entry (it holds their phone number). **Deploy the rules** (`firebase deploy --only firestore:rules`) or crew sign-ins will all land on the "Sorry" page.
+- Copy is in `src/data/crew.js`; pages are `src/pages/CrewLogin.jsx` and `CrewWelcome.jsx`; the admin section is `src/components/admin/CrewAdmin.jsx`.
+
+---
+
 ## Team messaging
 
 `/team/chat` (in the team portal's header) has one **team chat** everyone on the team sees, and **private one-to-one chats** between any two people on the team list. Text only for now: **attachments are not built yet** (Sam chose "messages first, files later"; storing them in Sam's Google Drive needs a server, or each sender's own Drive).
@@ -465,7 +481,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 - `noteBoards/{id}` = `{ title, parent, theme, icon, public, cardCount, createdBy, createdAt }`; `home` is the top board. `icon` is `{ name, shapes: [{ tag, …attributes }] }`: only plain SVG shapes are ever drawn from it.
 - `noteBoards/{id}/cards/{cardId}` = `{ type, x, y, w, z, color, trashed, … }` with `html` (note), `title` + `items` (to-do), `text` (heading), `boardId` (a board's icon), `title` + `collapsed` (column; cards inside it carry `column` and `order`), `from` / `to` / `startArrow` / `endArrow` / `dashed` / `weight` / `label` / `bend` (line; an end is `{ card }` when attached, else `{ x, y }`), or `fileId` / `name` / `size` / `pages` / `thumb` (a PDF).
 - `noteFiles/{fileId}` = `{ board, name, type, size, parts, createdBy, createdAt }`, with the file as base64 text in `noteFiles/{fileId}/parts/{n}` (about 180 KB of file per part). `board` is the board the card is on; it follows the card when it's moved into another board.
-- **Security (`firestore.rules`):** team members read and write boards, cards and files; anyone can read a board with `public: true`, its cards, and the files whose `board` is that board; nobody else can write. **Deploy the rules** (`firebase deploy --only firestore:rules`) or nobody but Sam can use it.
+- **Security (`firestore.rules`):** team members read and write boards, cards and files; the crew (see [Crew](#crew)) read all of them and write nothing; anyone can read a board with `public: true`, its cards, and the files whose `board` is that board; nobody else can write. **Deploy the rules** (`firebase deploy --only firestore:rules`) or nobody but Sam can use it.
 
 ### Still to build
 
@@ -611,6 +627,7 @@ Sam wants to be able to build an MCP server for the site later (so an AI assista
 | Team list, welcome message | `teamMembers/{email}`, `portal/welcome` | `src/lib/team.js` | `listMembers`, `addMember`, `removeMember`, `getWelcome`, `saveWelcome` |
 | Team messages | `chats/{chatId}/messages` | `src/lib/teamChat.js` | `watchChats`, `watchMessages`, `sendMessage` |
 | Assignments doc | `portal/*` | `src/lib/assignments.js` | `getAssignmentsDoc`, `getDocInfo`, `publishDoc` |
+| Crew list | `crew/{email}` | `src/lib/crew.js` | `listCrew`, `addCrewMember`, `removeCrewMember`, `getCrewMember` |
 | Note boards, cards, files | `noteBoards`, `…/cards`, `noteFiles`, `…/parts` | `src/lib/note.js` | `createBoard`, `updateBoard`, `setCard`, `patchCards`, `removeCard`, `moveCards`, `setPublic`, `uploadFile`, `loadFile` |
 | Campaign runs | `campaignRuns`, `metaUploads`, `pixelEvents` | `src/lib/campaignRuns.js` | `listRuns`, `saveRun`, `setRunArchived`, `deleteRun` |
 | Meta Ads (not in Firestore) | Meta Graph API | `src/lib/meta.js`, `metaAnalytics.js` | also usable from the terminal: see [Meta command-line tool](#meta-command-line-tool) |
@@ -631,7 +648,7 @@ Sam wants to be able to build an MCP server for the site later (so an AI assista
 - **Accessibility:** real `<button>`s for actions and `<a>`/`<Link>` for navigation, labels on all inputs, `aria-expanded` / `aria-pressed` / `aria-current` where relevant, Esc closes modals.
 - **No fabricated content.** Stats, quotes and testimonials must come from Sam or the artists. Use `[bracketed]` placeholders until then.
 - **All database access lives in `src/lib/`.** Pages and components never call Firestore themselves; they call a named function in a lib file (see [Data layer](#data-layer-ready-for-an-mcp-later)).
-- **No animations or backend** unless asked. (Sam asked for Firebase auth for the owner-only area.)
+- **No animations or backend** unless asked. (Sam asked for Firebase auth for the owner-only area, and for the fade-in on the crew welcome.)
 
 ---
 
