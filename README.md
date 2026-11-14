@@ -102,6 +102,7 @@ src/
       Logo.jsx              text logo (site.name), links home
       ScrollToHash.jsx      scrolls to #anchor on navigation (e.g. /#metro-the-news), else to top
       PageMeta.jsx          sets tab title + meta description per route (from data/seo.js)
+      ErrorBoundary.jsx     shows "Something went wrong" + Reload instead of a blank page if a page crashes
     ui/
       Button.jsx            Link / <a> / <button> with variants (primary, secondary, ghost)
       Section.jsx           standard section wrapper: padding, max width, optional title/subtitle
@@ -171,6 +172,7 @@ src/
 
   data/                     ALL site copy and content (see below)
   lib/
+    freshness.js            reloads a tab that is running an out-of-date copy of the site (see Hosting → Staying up to date)
     spotify.js              spotifyEmbedUrl(url): open.spotify.com link → embed URL (null if not Spotify)
     drive.js                Drive API v3: listFiles(), folderPath(), views/types/sorts, typeLabel(), fileSize(), shortDate()
     driveAuth.js            connectDrive() (Google popup, drive.readonly), getDriveToken(), clearDriveToken()
@@ -330,6 +332,7 @@ Dark, minimal, **frosted grey glass** over a **near-black background with a fain
 - Inter font. Headings use `font-bold`/`font-extrabold` and `tracking-tight`. h1 is `text-4xl md:text-6xl`, section h2 is `text-3xl md:text-4xl`.
 - Content width: `max-w-6xl` centered (the homepage card is `max-w-3xl`), `px-4` side padding. Sections are `py-16 md:py-24`; use `<Section>`.
 - Mobile-first: grids collapse to one column; the header switches to a ☰ menu below `md`.
+- **One site for every screen.** There is no separate mobile site (no `m.` address): each page adapts to the screen. Every new page is checked at phone size (about 390px wide) with touch before it's done: no sideways scrolling, every control on screen and big enough to tap, nothing that works only by hover, double-click or right-click.
 - **No animations** (no marquees, carousels with auto-play, scroll effects or animated canvases) unless Sam asks for them. This was an explicit early decision.
 
 ---
@@ -438,6 +441,7 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 - **Left toolbar:** drag **Note**, **To-do**, **Heading**, **Line**, **Board** or **Column** onto the canvas (clicking one just says "Drag me"). Double-clicking empty canvas adds a note. With cards selected the toolbar becomes their options (colour, to-do title, rename, line style, delete); while editing a note it becomes text formatting.
 - **Notes:** rich text (TipTap): headings, bold, italic, strikethrough, bullet and numbered lists, quotes. Typing `# `, `## `, `* `, `1. ` or `> ` at the start of a line works too.
 - **To-do lists:** Enter adds the next task, Backspace on an empty one removes it; tick boxes work without entering edit mode; optional title.
+- **On a phone:** everything works by touch. Drag tools out of the toolbar, drag cards, swipe empty board to move around. Tap a card to select it and tap it again to edit it; the same second tap opens a board or a PDF (double-tapping isn't dependable on phones). The header keeps the board name, View and Share on one row.
 - **Cards:** click to select, Shift-click or drag a box to select several, drag to move, drag the corner to change width, click a selected card (or double-click) to edit, Esc to stop. Drag cards (or a whole column) onto a board icon to move them inside it; lines stay behind.
 - **Columns:** a titled stack of cards. Drag cards in (they take the column's width and drop into the stack where you let go), drag them up and down to reorder, drag them out to put them back on the board. Moving a column moves its cards; the `–` in its corner collapses it. Columns don't nest. Deleting a column hides its cards with it (undo or Trash → Restore brings both back; Empty trash removes both).
 - **Lines and arrows:** drag **Line** out, then select it and drag an end onto a card to attach it; attached ends follow the card. Drag the middle handle to curve it (drag it back to straighten). The toolbar sets colour, an arrowhead at the start and / or end, dashed, weight (3 thicknesses) and a label (double-clicking the line also edits the label). Lines aren't counted as cards.
@@ -582,6 +586,14 @@ npm run build && firebase deploy --only hosting
 | CNAME | `www` | `latest-avenue-app.web.app` |
 
 Keep the **Email Security** records (`v=spf1 -all` and `_dmarc`: the domain sends no email) and **Squarespace Domain Connect**; the **Squarespace Defaults** group is deleted. Firebase issues the HTTPS certificate itself once the records resolve. `latestavenue.com` and `www.latestavenue.com` are in Firebase Auth's authorized domains; the Meta app's App Domains should list `latestavenue.com` and `latest-avenue-app.firebaseapp.com` (App settings → Basic).
+
+### Staying up to date after a deploy
+
+Every deploy renames the script files in `/assets`. A tab opened before the deploy (phones keep tabs for days) still asks for the old names when it needs another page, such as `/login`. Three things stop that from ending in a blank page:
+
+- `firebase.json` only falls back to `index.html` for pages, **not for `/assets/**`**, so a missing script is a plain 404 instead of the homepage's HTML served as a script and cached for a year.
+- `lib/freshness.js` listens for a script that fails to load and reloads the page once (at most once a minute), which picks up the current version.
+- `components/layout/ErrorBoundary.jsx` wraps all pages: any crash shows "Something went wrong" with a Reload button, never a blank screen.
 
 ## Conventions
 
