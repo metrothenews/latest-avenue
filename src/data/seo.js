@@ -19,6 +19,7 @@ export const seo = {
     title: `global | ${site.name}`,
     description: `Name the country from its outline. A game from ${site.name}.`,
   },
+  '/experience': { title: `experience | ${site.name}`, description: `Look around. A 360° view from ${site.name}.`, preview: true },
   '/login': { title: `Sign in | ${site.name}`, description },
   '/admin': { title: `Admin | ${site.name}`, description },
   '/admin/drive': { title: `Drive | ${site.name}`, description },

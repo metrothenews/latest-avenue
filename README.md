@@ -210,6 +210,7 @@ Defined in `src/App.jsx`.
 | `/privacy` | Legal (`doc="privacy"`) | SiteLayout | footer |
 | `/terms` | Legal (`doc="terms"`) | SiteLayout | footer |
 | `/global` | Global (outline guessing game) | SiteLayout | **no** (hidden; reached by typing the URL) |
+| `/experience` | Experience: a 360° view you turn left and right in | none (full screen) | **no** (hidden; reached by typing the URL) |
 | `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
@@ -301,6 +302,21 @@ To add an artist, append an object to `artists`. They appear in the /login side-
 - Nothing is saved: no backend, no cookies, no storage. Reloading starts a new game.
 - Country data comes from Natural Earth (public domain) via the `world-atlas` dev dependency. `scripts/build-countries.mjs` turns it into `src/data/countries.js`; rerun it with `npm run build:countries` only to change which countries are included. 196 countries can be guessed; the 151 larger than 20,000 km² can be the answer. Far-off territories (e.g. French Guiana) are left out of outlines.
 - The page loads lazily, so the outline file (~480 KB) is only downloaded on `/global`.
+
+---
+
+## The /experience view
+
+`/experience` puts you in one spot of a 3D scene (Sam's Unreal Engine office) and lets you turn left and right, all the way round, as if it were being drawn live. It is really one still panorama.
+
+- **How it works (`src/lib/pano.js`, no library):** the panorama is wrapped around the inside of a sphere and looked at from the centre through a 45mm lens, in one WebGL canvas. The graphics chip does the perspective, which is what makes it feel like turning your head instead of sliding a picture. A frame is drawn only when the view changes, so it costs nothing while you hold still.
+- **Controls (`src/pages/Experience.jsx`):** drag or swipe (the spot you grab stays under your finger, with a short coast after letting go, unless the device asks for reduced motion), **left and right arrow keys**, a sideways trackpad scroll or Shift + wheel. **F** or the corner button is full screen (iPhone Safari has no full screen for pages; there the button is hidden and the page simply fills the screen). There is no zoom and no moving.
+- **Looking up and down is built but switched off** (`lookUpDown` in `src/data/experience.js`); turning it on also enables the up and down arrow keys and vertical dragging.
+- **Settings (`src/data/experience.js`):** `focalLength` and `portraitFocalLength` (mm on a 36 × 24 frame; the screen shows a crop of that frame), `startYaw`, `keySpeed`, and the page's copy.
+- **The image:** one full 360° × 180° equirectangular render (2:1), camera level, centre column facing the way the page should open. For a sharp 45mm view it must be **at least 16384 × 8192**. Render with auto exposure, vignette, lens flares, motion blur, film grain and depth of field off.
+- **Preparing it:** `npm run pano -- path/to/panorama.png` (`scripts/pano.mjs`, uses the dev-only `sharp` package) writes `public/pano/`: a small `preview.webp` of the whole thing, the panorama at full, half and quarter size cut into 2048px tiles (`<width>/<row>_<col>.webp`), and `manifest.json`. The page shows the preview at once, then downloads only the tiles being faced, at the size the screen needs. Commit `public/pano/` and deploy. The source render is not copied into the site.
+- **Currently** `public/pano/` holds only a 2000px-wide test render, so the view is blurry until the full-size render is run through the script.
+- **Data use:** a full turn at the largest size downloads several MB. Firebase's free plan allows about 360 MB of downloads a day.
 
 ---
 
