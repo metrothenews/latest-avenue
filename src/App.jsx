@@ -30,6 +30,8 @@ const NoteBoard = lazy(() => import('./pages/note/NoteBoard.jsx'))
 const TeamAssignments = lazy(() => import('./pages/TeamAssignments.jsx'))
 // The hidden game loads lazily too: its country outlines are a large file.
 const Global = lazy(() => import('./pages/Global.jsx'))
+// The 360° view fills the whole screen, so it sits outside the site layout.
+const Experience = lazy(() => import('./pages/Experience.jsx'))
 
 export default function App() {
   return (
@@ -49,6 +51,7 @@ export default function App() {
             <Route path="/global" element={<Global />} />
             <Route path="*" element={<NotFound />} />
           </Route>
+          <Route path="/experience" element={<Experience />} />
           {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. */}
           <Route element={<AuthProvider />}>
             <Route element={<AuthLayout />}>
