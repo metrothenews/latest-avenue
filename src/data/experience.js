@@ -23,11 +23,11 @@ export const experience = {
     rollTime: 0.45, // seconds: how quickly the lean follows the turn (and straightens after)
     // Standing still: every few seconds the camera picks a new, tiny offset and eases towards it.
     idle: {
-      pan: 0.3, // degrees, left / right, at most
-      tilt: 0.2, // degrees, up / down, at most
-      roll: 0.28, // degrees, at most
-      every: [3.5, 8], // seconds between new offsets, picked at random in this range
-      ease: 2.6, // seconds: how slowly it moves to each new offset
+      pan: 0.45, // degrees, left / right, at most
+      tilt: 0.3, // degrees, up / down, at most
+      roll: 0.42, // degrees, at most
+      every: [2.3, 5.3], // seconds between new offsets, picked at random in this range
+      ease: 1.75, // seconds: how slowly it moves to each new offset
       settle: 1.6, // seconds for the drift to return after moving stops
       whileMoving: 0.25, // how much of the drift stays while turning (0 to 1)
     },
