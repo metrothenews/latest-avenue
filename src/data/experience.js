@@ -28,9 +28,9 @@ export const experience = {
     rollTime: 0.45, // seconds: how quickly the lean follows the turn (and straightens after)
     // Standing still: every few seconds the camera picks a new, tiny offset and eases towards it.
     idle: {
-      pan: 0.45, // degrees, left / right, at most
-      tilt: 0.3, // degrees, up / down, at most
-      roll: 0.42, // degrees, at most
+      pan: 0.81, // degrees, left / right, at most
+      tilt: 0.54, // degrees, up / down, at most
+      roll: 0.76, // degrees, at most
       every: [2.3, 5.3], // seconds between new offsets, picked at random in this range
       ease: 1.75, // seconds: how slowly it moves to each new offset
       settle: 1.6, // seconds for the drift to return after moving stops
@@ -38,6 +38,29 @@ export const experience = {
     },
   },
   keySpeed: 45, // degrees per second while an arrow key is held (reduced motion only)
+  // The computers. Look at one and it is outlined, with an "A" prompt; press it (the space bar,
+  // or tap the prompt) and the view closes in on its screen and shows `slides`, a PDF, one page
+  // at a time. Places are measured in pixels on the panorama at `panoWidth` wide: `body` is the
+  // monitor (what gets outlined), `screen` is the glass the slide is shown on.
+  slides: '/slides/chapel-hill-lookbook.pdf',
+  panoWidth: 16384,
+  computers: [
+    { id: 'desk-1', body: { left: 7900, right: 8487, top: 3860, bottom: 4385 }, screen: { left: 7965, right: 8425, top: 3922, bottom: 4267 } },
+    { id: 'desk-2', body: { left: 12022, right: 12548, top: 3890, bottom: 4375 }, screen: { left: 12083, right: 12492, top: 3940, bottom: 4247 } },
+    { id: 'desk-3', body: { left: 16019, right: 16749, top: 3810, bottom: 4445 }, screen: { left: 16110, right: 16660, top: 3890, bottom: 4302 } },
+    { id: 'desk-4', body: { left: 3840, right: 4352, top: 3862, bottom: 4300 }, screen: { left: 3910, right: 4268, top: 3959, bottom: 4227 } },
+  ],
+  lockMargin: 2, // degrees: how far past a monitor's edge you can look and still be locked on to it
+  closeIn: 1.22, // how much of the monitor shows around the slide when closed in (1 = the slide fills the view)
+  closeInTime: 0.7, // seconds for the view to close in or pull back
+  slideFade: 0.22, // seconds for one slide to fade into the next
+  action: 'Open',
+  actionHint: 'Press the space bar, or tap, to open this screen',
+  previous: 'Previous slide',
+  next: 'Next slide',
+  close: 'Close',
+  closeHint: 'Close (space bar)',
+  slideOf: (n, count) => `${n} / ${count}`,
   hint: 'Drag, or use the arrow keys, to look around',
   hintTouch: 'Drag to look around',
   enterFullscreen: 'Full screen',

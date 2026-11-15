@@ -35,8 +35,9 @@ const FRAGMENT = `
 precision mediump float;
 uniform sampler2D uImage;
 uniform float uGain; // brightness: 1 leaves the picture as it is
+uniform float uAlpha; // 1 is solid; less lets what is behind show through (used for slides)
 varying vec2 vUv;
-void main() { gl_FragColor = vec4(texture2D(uImage, vUv).rgb * uGain, 1.0); }`
+void main() { gl_FragColor = vec4(texture2D(uImage, vUv).rgb * uGain, uAlpha); }`
 
 const TAU = Math.PI * 2
 const wrap = (angle) => angle - TAU * Math.round(angle / TAU) // into -π..π
@@ -67,14 +68,17 @@ async function loadImage(url) {
 }
 
 // Starts the view on `canvas`. `settings` is data/experience.js. Calls onReady() once the first
-// image is on screen and onError() if it can't start. Returns { view, sway, set(yaw, pitch), draw(),
-// resize(), destroy() }; `view` is { yaw, pitch } in radians, with yaw growing as you turn right;
+// image is on screen and onError() if it can't start. Returns { view, sway, stage, set(yaw, pitch), draw(),
+// resize(), destroy() }; `view` is { yaw, pitch, zoom } (radians; yaw grows as you turn right; zoom 1 is the lens as set);
 // `sway` is { yaw, pitch, roll } added on top when drawing (set it, then call draw()).
 export function startPano(canvas, settings, { onReady = () => {}, onError = () => {} } = {}) {
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' })
   if (!gl) return null
 
-  const view = { yaw: (settings.startYaw * Math.PI) / 180, pitch: 0 }
+  const view = { yaw: (settings.startYaw * Math.PI) / 180, pitch: 0, zoom: 1 }
+  // A picture drawn over part of the panorama (a slide on a monitor's screen), or null:
+  // { area: [lon0, lonSpan, latTop, latSpan], from, to, mix, alpha }. `to` fades in over `from`.
+  const stage = { slide: null }
   // Small extra movement on top of where the visitor is looking (the handheld feel): radians.
   const sway = { yaw: 0, pitch: 0, roll: 0 }
   const tiles = new Map() // "level/row_col" → { texture | null (loading), used }
@@ -98,7 +102,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAGMENT))
     gl.linkProgram(program)
     gl.useProgram(program)
-    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGain'].map((name) => [name, gl.getUniformLocation(program, name)]))
+    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGain', 'uAlpha'].map((name) => [name, gl.getUniformLocation(program, name)]))
 
     const points = []
     const at = (i, j) => points.push(i / GRID, j / GRID)
@@ -112,6 +116,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.enableVertexAttribArray(a)
     gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0)
     gl.disable(gl.DEPTH_TEST)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     gl.clearColor(0, 0, 0, 1)
   }
 
@@ -138,7 +143,23 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     return 1
   }
 
-  const field = () => lens(canvas.width, canvas.height, settings.focalLength, settings.portraitFocalLength)
+  const field = () => {
+    const f = lens(canvas.width, canvas.height, settings.focalLength, settings.portraitFocalLength)
+    return { x: f.x / view.zoom, y: f.y / view.zoom }
+  }
+
+  // Where a point of the panorama is on the page right now: [x, y] in CSS px from the canvas's
+  // top left, or null when it is behind the camera.
+  function project(lon, lat) {
+    const f = field()
+    const a = lon - view.yaw - sway.yaw
+    let [x, y, z] = [Math.cos(lat) * Math.sin(a), Math.sin(lat), Math.cos(lat) * Math.cos(a)]
+    const p = view.pitch + sway.pitch
+    ;[y, z] = [y * Math.cos(p) - z * Math.sin(p), y * Math.sin(p) + z * Math.cos(p)]
+    ;[x, y] = [x * Math.cos(sway.roll) - y * Math.sin(sway.roll), x * Math.sin(sway.roll) + y * Math.cos(sway.roll)]
+    if (z <= 0.05) return null
+    return [(x / z / f.x + 1) / 2 * canvas.clientWidth, (1 - y / z / f.y) / 2 * canvas.clientHeight]
+  }
 
   // The smallest size that is still as sharp as this screen can show (or the biggest there is).
   function pickLevel(f) {
@@ -211,6 +232,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.uniform3f(uniforms.uView, view.yaw + sway.yaw, view.pitch + sway.pitch, sway.roll)
     gl.uniform2f(uniforms.uLens, 1 / f.x, 1 / f.y)
     gl.uniform1f(uniforms.uGain, exposure())
+    gl.uniform1f(uniforms.uAlpha, 1)
 
     // The preview, everywhere, in eight slices; then every sharp tile that has arrived, on top.
     for (let i = 0; i < 8; i++) paint(preview, [-Math.PI + (i * TAU) / 8, TAU / 8, Math.PI / 2, Math.PI], [i / 8, 0, 1 / 8, 1])
@@ -224,6 +246,16 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
       }
       for (const tile of tilesInView(level, f, AHEAD)) fetchTile(tile)
       trim()
+    }
+
+    const slide = stage.slide
+    if (slide && slide.alpha > 0.003 && (slide.from || slide.to)) {
+      gl.enable(gl.BLEND)
+      gl.uniform1f(uniforms.uGain, 1)
+      const fading = slide.from && slide.to && slide.mix < 1
+      if (slide.from && (fading || !slide.to)) { gl.uniform1f(uniforms.uAlpha, slide.alpha); paint(slide.from, slide.area, [0, 0, 1, 1]) }
+      if (slide.to) { gl.uniform1f(uniforms.uAlpha, slide.alpha * (fading ? slide.mix : 1)); paint(slide.to, slide.area, [0, 0, 1, 1]) }
+      gl.disable(gl.BLEND)
     }
   }
 
@@ -262,7 +294,11 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
   return {
     view,
     sway,
+    stage,
     field,
+    project,
+    texture,
+    dropTexture: (t) => gl.deleteTexture(t),
     limits,
     exposure,
     set(yaw, pitch = view.pitch) {
