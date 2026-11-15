@@ -5,8 +5,9 @@ import { experience as copy } from '../data/experience.js'
 
 const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }
 
-// /experience: stand in one spot of a 360° panorama and turn left and right (lib/pano.js draws
-// it). Drag, swipe, arrow keys or a sideways trackpad scroll turn the view; F is full screen.
+// /experience: stand in one spot of a 360° panorama and look around (lib/pano.js draws it).
+// Drag, swipe, the left and right arrow keys or a sideways trackpad scroll turn the view; the up
+// and down arrow keys look up and down, within limits; F is full screen.
 export default function Experience() {
   const frame = useRef(null)
   const canvas = useRef(null)
@@ -48,6 +49,7 @@ export default function Experience() {
     const rad = Math.PI / 180
     const pick = (most) => (Math.random() * 2 - 1) * most * rad
     let turn = 0 // radians per second, from the arrow keys (with momentum)
+    let lift = 0 // the same, for looking up (+) and down (-)
     let roll = 0 // radians: the lean into a turn
     let rollSpeed = 0
     const drift = { at: 0, level: 0, now: [0, 0, 0], speed: [0, 0, 0], to: [0, 0, 0] } // the idle wander: pan, tilt, roll
@@ -86,10 +88,23 @@ export default function Experience() {
         turn *= Math.exp(-dt / hand.slowDown)
         if (Math.abs(turn) < slowest / 12) turn = 0
       }
+      // Looking up and down works the same way, and eases to a stop as it nears its limits.
+      const [up, down] = pano.limits()
+      const highest = Math.min(fastest, copy.maxTiltSpeed * rad)
+      if (dy && (up || down)) {
+        lift += (dy * highest - lift) * (1 - Math.exp(-dt / hand.speedUp))
+        if (lift * dy >= 0 && Math.abs(lift) < slowest) lift = dy * slowest
+      } else {
+        lift *= Math.exp(-dt / hand.slowDown)
+        if (Math.abs(lift) < slowest / 12) lift = 0
+      }
+      const room = lift > 0 ? up - pano.view.pitch : pano.view.pitch + down
+      lift = Math.sign(lift) * Math.min(Math.abs(lift), Math.max(0, room) / 0.28)
       let yaw = pano.view.yaw + turn * dt
       if (!drag && !dx && Math.abs(speed) > 0.00002) { yaw += speed * ms; speed *= Math.exp(-ms / 320) } // the coast after a swipe
       else if (!drag) speed = 0
-      if (!drag) pano.set(yaw, pano.view.pitch + dy * copy.keySpeed * rad * dt)
+      if (!drag) pano.set(yaw, pano.view.pitch + lift * dt)
+      else if (lift) pano.set(pano.view.yaw, pano.view.pitch + lift * dt)
 
       // The lean follows the turning speed, and straightens when it stops.
       ;[roll, rollSpeed] = spring(roll, rollSpeed, (turn / fastest) * hand.maxRoll * rad, hand.rollTime, dt, 0.8)
@@ -102,7 +117,7 @@ export default function Experience() {
         drift.at = now + (idle.every[0] + Math.random() * (idle.every[1] - idle.every[0])) * 1000
       }
       for (let i = 0; i < 3; i++) [drift.now[i], drift.speed[i]] = spring(drift.now[i], drift.speed[i], drift.to[i], idle.ease, dt)
-      const moving = Boolean(dx || drag || turn || speed)
+      const moving = Boolean(dx || dy || drag || turn || lift || speed)
       drift.level += ((moving ? idle.whileMoving : 1) - drift.level) * (1 - Math.exp(-dt / idle.settle))
       pano.sway.yaw = drift.now[0] * drift.level
       pano.sway.pitch = drift.now[1] * drift.level
@@ -128,7 +143,7 @@ export default function Experience() {
       if (!drag || e.pointerId !== drag.id) return
       // Keep the spot that was grabbed under the finger.
       const a = angles(e)
-      pano.set(drag.yaw + drag.ax - a.x, drag.pitch + drag.ay - a.y)
+      pano.set(drag.yaw + drag.ax - a.x) // dragging only turns; looking up and down is on the arrow keys
       const dt = e.timeStamp - last.t
       if (dt > 0) {
         let turned = pano.view.yaw - last.yaw

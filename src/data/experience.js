@@ -8,10 +8,15 @@ export const experience = {
   portraitFocalLength: 45,
   // Which way you face when the page opens, in degrees to the right of the panorama's centre.
   startYaw: 0,
-  // Looking up and down is switched off for now; turning it on needs no other change.
-  lookUpDown: false,
-  maxPitch: 60, // degrees, when lookUpDown is on
-  // The handheld feel. Turning with the arrow keys has momentum: it picks up speed, coasts to a
+  // Looking up and down, with the up and down arrow keys. 90 degrees would be straight up (or down).
+  lookUpDown: true,
+  maxUp: 45, // degrees: half way to straight up
+  maxDown: 18, // degrees: a fifth of the way to straight down
+  maxTiltSpeed: 40, // degrees per second: the fastest it looks up or down
+  // The picture brightens as you look up and darkens as you look down, evenly in between.
+  brighterUp: 0.15, // 15% brighter when looking as far up as possible
+  darkerDown: 0.1, // 10% darker when looking as far down as possible
+  // The handheld feel. Turning and looking up or down with the arrow keys has momentum: it picks up speed, coasts to a
   // stop, and the camera leans into the turn. Left alone, the camera drifts very slightly, as if
   // someone were holding it. All of it is switched off for people whose device asks for reduced motion.
   handheld: {
@@ -32,12 +37,12 @@ export const experience = {
       whileMoving: 0.25, // how much of the drift stays while turning (0 to 1)
     },
   },
-  keySpeed: 45, // degrees per second while an arrow key is held (reduced motion, and looking up / down)
+  keySpeed: 45, // degrees per second while an arrow key is held (reduced motion only)
   hint: 'Drag, or use the arrow keys, to look around',
   hintTouch: 'Drag to look around',
   enterFullscreen: 'Full screen',
   exitFullscreen: 'Leave full screen',
-  label: 'A 360° view you can turn left and right in. Drag, or use the left and right arrow keys.',
+  label: 'A 360° view you can look around in. Drag to turn, or use the arrow keys to turn and to look up and down.',
   unsupported: "This browser can't show the view (it needs WebGL).",
   failed: "Couldn't load the view. Check your connection and reload.",
 }
