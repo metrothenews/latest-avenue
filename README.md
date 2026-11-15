@@ -315,7 +315,7 @@ To add an artist, append an object to `artists`. They appear in the /login side-
 - **Settings (`src/data/experience.js`):** `focalLength` and `portraitFocalLength` (mm on a 36 × 24 frame; the screen shows a crop of that frame), `startYaw`, `keySpeed`, and the page's copy.
 - **The image:** one full 360° × 180° equirectangular render (2:1), camera level, centre column facing the way the page should open. For a sharp 45mm view it must be **at least 16384 × 8192**. Render with auto exposure, vignette, lens flares, motion blur, film grain and depth of field off.
 - **Preparing it:** `npm run pano -- path/to/panorama.png` (`scripts/pano.mjs`, uses the dev-only `sharp` package) writes `public/pano/`: a small `preview.webp` of the whole thing, the panorama at full, half and quarter size cut into 2048px tiles (`<width>/<row>_<col>.webp`), and `manifest.json`. The page shows the preview at once, then downloads only the tiles being faced, at the size the screen needs. Commit `public/pano/` and deploy. The source render is not copied into the site.
-- **Currently** `public/pano/` holds only a 2000px-wide test render, so the view is blurry until the full-size render is run through the script.
+- **Currently** `public/pano/` holds the full-size office render (16384 × 8192, about 11 MB of tiles in all).
 - **Data use:** a full turn at the largest size downloads several MB. Firebase's free plan allows about 360 MB of downloads a day.
 
 ---
