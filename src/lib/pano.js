@@ -34,8 +34,9 @@ void main() {
 const FRAGMENT = `
 precision mediump float;
 uniform sampler2D uImage;
+uniform float uGain; // brightness: 1 leaves the picture as it is
 varying vec2 vUv;
-void main() { gl_FragColor = texture2D(uImage, vUv); }`
+void main() { gl_FragColor = vec4(texture2D(uImage, vUv).rgb * uGain, 1.0); }`
 
 const TAU = Math.PI * 2
 const wrap = (angle) => angle - TAU * Math.round(angle / TAU) // into -π..π
@@ -97,7 +98,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAGMENT))
     gl.linkProgram(program)
     gl.useProgram(program)
-    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens'].map((name) => [name, gl.getUniformLocation(program, name)]))
+    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGain'].map((name) => [name, gl.getUniformLocation(program, name)]))
 
     const points = []
     const at = (i, j) => points.push(i / GRID, j / GRID)
@@ -126,6 +127,17 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     return t
   }
 
+  const rad = Math.PI / 180
+  const limits = () => (settings.lookUpDown ? [settings.maxUp * rad, settings.maxDown * rad] : [0, 0])
+  // Brightness for where we're looking: up to `brighterUp` more at the top limit, `darkerDown`
+  // less at the bottom limit, and in proportion in between.
+  function exposure() {
+    const [up, down] = limits()
+    if (view.pitch > 0 && up) return 1 + settings.brighterUp * (view.pitch / up)
+    if (view.pitch < 0 && down) return 1 - settings.darkerDown * (-view.pitch / down)
+    return 1
+  }
+
   const field = () => lens(canvas.width, canvas.height, settings.focalLength, settings.portraitFocalLength)
 
   // The smallest size that is still as sharp as this screen can show (or the biggest there is).
@@ -136,8 +148,10 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
 
   // The tiles of `level` that touch the view, widened by `margin` radians: [{ key, url, area, off }].
   function tilesInView(level, f, margin) {
-    const halfAcross = Math.atan(f.x) + margin
     const halfUp = Math.atan(f.y) + margin / 2
+    // Looking up or down, the top or bottom of the frame takes in more of the circle.
+    const steepest = Math.min(1.45, Math.abs(view.pitch) + halfUp)
+    const halfAcross = Math.atan(f.x / Math.cos(steepest)) + margin
     const tileLon = (manifest.tile / level.width) * TAU
     const tileLat = (manifest.tile / level.height) * Math.PI
     const found = []
@@ -196,6 +210,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.uniform3f(uniforms.uView, view.yaw + sway.yaw, view.pitch + sway.pitch, sway.roll)
     gl.uniform2f(uniforms.uLens, 1 / f.x, 1 / f.y)
+    gl.uniform1f(uniforms.uGain, exposure())
 
     // The preview, everywhere, in eight slices; then every sharp tile that has arrived, on top.
     for (let i = 0; i < 8; i++) paint(preview, [-Math.PI + (i * TAU) / 8, TAU / 8, Math.PI / 2, Math.PI], [i / 8, 0, 1 / 8, 1])
@@ -248,10 +263,12 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     view,
     sway,
     field,
+    limits,
+    exposure,
     set(yaw, pitch = view.pitch) {
-      const limit = settings.lookUpDown ? (settings.maxPitch * Math.PI) / 180 : 0
+      const [up, down] = limits()
       view.yaw = wrap(yaw)
-      view.pitch = Math.max(-limit, Math.min(limit, pitch))
+      view.pitch = Math.max(-down, Math.min(up, pitch))
       draw()
     },
     draw,
