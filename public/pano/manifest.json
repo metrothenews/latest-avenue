@@ -1,9 +1,28 @@
 {
-  "version": "mwh4azni",
+  "version": "mwh4qhyj",
   "tile": 2048,
   "preview": {
-    "width": 2000,
-    "height": 1000
+    "width": 2048,
+    "height": 1024
   },
-  "levels": []
+  "levels": [
+    {
+      "width": 4096,
+      "height": 2048,
+      "cols": 2,
+      "rows": 1
+    },
+    {
+      "width": 8192,
+      "height": 4096,
+      "cols": 4,
+      "rows": 2
+    },
+    {
+      "width": 16384,
+      "height": 8192,
+      "cols": 8,
+      "rows": 4
+    }
+  ]
 }
