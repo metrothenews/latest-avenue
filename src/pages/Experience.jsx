@@ -5,6 +5,19 @@ import { centre, fit, outline } from '../lib/panoSpots.js'
 import { openSlides } from '../lib/slides.js'
 import { experience as copy } from '../data/experience.js'
 
+// How thick the interface's lines are on screen, in px.
+const LINE = 2.625
+
+// One of the interface's line drawings (a button prompt), on a 32 x 32 grid, drawn at whatever
+// size its parent is with lines LINE px thick.
+function Glyph({ children }) {
+  return (
+    <svg viewBox="0 0 32 32" className="h-full w-full [&_*]:[vector-effect:non-scaling-stroke]" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth={LINE} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  )
+}
+
 const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }
 
 // /experience: stand in one spot of a 360° panorama and look around (lib/pano.js draws it).
@@ -12,7 +25,7 @@ const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDow
 // and down arrow keys look up and down, within limits; F is full screen.
 // Looking at one of the computers outlines it and shows an "A" prompt; the space bar (or a tap
 // on the prompt) closes in on its screen and shows a PDF there as slides: left and right arrow
-// keys (or a swipe, or the buttons) change slide, the space bar or Esc pulls back out.
+// keys (or a swipe, or the buttons) change slide, the X key (or Esc) goes back out.
 export default function Experience() {
   const frame = useRef(null)
   const canvas = useRef(null)
@@ -256,8 +269,8 @@ export default function Experience() {
         // The outline and the prompt follow the computer on the page.
         const points = spot.ring.map(([lon, lat]) => pano.project(lon, lat))
         ring.current?.setAttribute('d', points.every(Boolean) ? `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z` : '')
-        const below = pano.project(spot.body.lon, spot.body.lat - spot.body.halfLat - 1.4 * rad)
-        if (prompt.current && below) prompt.current.style.transform = `translate(${(below[0] - 22).toFixed(1)}px, ${(below[1] - 22).toFixed(1)}px)`
+        const top = pano.project(spot.body.lon, spot.body.lat + spot.body.halfLat)
+        if (prompt.current && top) prompt.current.style.transform = `translate(${(top[0] - 32).toFixed(1)}px, ${(top[1] - 64 - 14).toFixed(1)}px)` // sits just above it
       }
     }
 
@@ -311,11 +324,11 @@ export default function Experience() {
       if (e.key === 'f' || e.key === 'F') return toggleFull()
       if (e.key === ' ' || e.code === 'Space') { // the "A" button, for now
         e.preventDefault()
-        if (!e.repeat) (show.on ? leave : enter)()
+        if (!e.repeat) enter()
         return
       }
       if (show.on) {
-        if (e.key === 'Escape' && !document.fullscreenElement) leave()
+        if (e.key === 'x' || e.key === 'X' || (e.key === 'Escape' && !document.fullscreenElement)) leave() // the "X" button
         if (e.key === 'ArrowRight') go(show.page + 1)
         if (e.key === 'ArrowLeft') go(show.page - 1)
         if (KEYS[e.key]) e.preventDefault()
@@ -371,33 +384,35 @@ export default function Experience() {
           </svg>
         </button>
       )}
-      {/* Looking at a computer: a thin outline around it, then the "A" prompt (space bar, or tap it). */}
+      {/* Looking at a computer: a thin outline around it, then the "A" button above it (space bar, or tap it). */}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-        <path ref={ring} fill="none" stroke="white" strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" className={`transition-opacity duration-500 motion-reduce:transition-none ${locked && !viewing ? 'opacity-100' : 'opacity-0'}`} />
+        <path ref={ring} fill="none" stroke="white" strokeOpacity="0.55" strokeWidth={LINE} strokeLinejoin="round" className={`transition-opacity duration-500 motion-reduce:transition-none ${locked && !viewing ? 'opacity-100' : 'opacity-0'}`} />
       </svg>
       <button
-        ref={prompt} type="button" tabIndex={locked && !viewing ? 0 : -1} aria-hidden={!(locked && !viewing)} aria-label={copy.actionHint} title={copy.actionHint}
+        ref={prompt} type="button" tabIndex={locked && !viewing ? 0 : -1} aria-hidden={!(locked && !viewing)} aria-label={copy.actionHint}
         onClick={(e) => { e.currentTarget.blur(); actions.current.enter?.() }}
-        className={`absolute left-0 top-0 flex h-11 w-11 items-center justify-center text-white transition-opacity duration-500 motion-reduce:transition-none ${locked && !viewing ? 'opacity-100 delay-300' : 'pointer-events-none opacity-0'}`}
+        className={`absolute left-0 top-0 h-16 w-16 cursor-default text-white transition-opacity duration-500 motion-reduce:transition-none ${locked && !viewing ? 'opacity-100 delay-300' : 'pointer-events-none opacity-0'}`}
       >
-        <svg viewBox="0 0 32 32" className="h-8 w-8" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="16" cy="16" r="13" />
-          <path d="M11 22l5-12 5 12M12.9 17.5h6.2" />
-        </svg>
+        <Glyph><circle cx="16" cy="16" r="13" /><path d="M11 22l5-12 5 12M12.9 17.5h6.2" /></Glyph>
       </button>
-      {/* Slides: previous, which slide, next, close. Arrow keys, a swipe and the space bar do the same. */}
-      <div className={`absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 text-white transition-opacity duration-500 motion-reduce:transition-none ${viewing ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'}`} aria-hidden={!viewing}>
-        {[
-          { label: copy.previous, by: -1, off: slide.page <= 1, d: 'M19 9l-7 7 7 7' },
-          { label: copy.next, by: 1, off: slide.page >= slide.count, d: 'M13 9l7 7-7 7' },
-        ].map((b, i) => (
-          <button key={b.label} type="button" tabIndex={viewing ? 0 : -1} disabled={b.off} aria-label={b.label} title={b.label} onClick={(e) => { e.currentTarget.blur(); actions.current.go?.(b.by) }} className={`flex h-11 w-11 items-center justify-center disabled:opacity-30 ${i ? 'order-3' : 'order-1'}`}>
-            <svg viewBox="0 0 32 32" className="h-8 w-8" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={b.d} /></svg>
-          </button>
-        ))}
-        <p className="order-2 min-w-[4.5rem] text-center text-sm tabular-nums text-white/60" aria-live="polite">{slide.count ? copy.slideOf(slide.page, slide.count) : ''}</p>
-        <button type="button" tabIndex={viewing ? 0 : -1} aria-label={copy.closeHint} title={copy.closeHint} onClick={(e) => { e.currentTarget.blur(); actions.current.leave?.() }} className="order-4 flex h-11 w-11 items-center justify-center">
-          <svg viewBox="0 0 32 32" className="h-8 w-8" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="16" cy="16" r="13" /><path d="M11.5 11.5l9 9M20.5 11.5l-9 9" /></svg>
+      {/* Slides, laid out like a game's button prompts: arrow keys at the sides, the slide number, and the X button to go back. */}
+      {[
+        { label: copy.previous, by: -1, off: slide.page <= 1, side: 'left-3 sm:left-6', d: 'M19.5 10.5v11l-8-5.5z' },
+        { label: copy.next, by: 1, off: slide.page >= slide.count, side: 'right-3 sm:right-6', d: 'M12.5 10.5v11l8-5.5z' },
+      ].map((b) => (
+        <button
+          key={b.label} type="button" tabIndex={viewing ? 0 : -1} aria-hidden={!viewing} disabled={b.off} aria-label={b.label}
+          onClick={(e) => { e.currentTarget.blur(); actions.current.go?.(b.by) }}
+          className={`absolute top-1/2 h-14 w-14 -translate-y-1/2 cursor-default text-white transition-opacity duration-500 motion-reduce:transition-none ${b.side} ${viewing ? (b.off ? 'opacity-25 delay-500' : 'opacity-100 delay-500') : 'pointer-events-none opacity-0'}`}
+        >
+          <Glyph><rect x="3" y="3" width="26" height="26" rx="5" /><path d={b.d} /></Glyph>
+        </button>
+      ))}
+      <div className={`absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-4 text-white transition-opacity duration-500 motion-reduce:transition-none ${viewing ? 'opacity-100 delay-500' : 'pointer-events-none opacity-0'}`} aria-hidden={!viewing}>
+        <p className="min-w-[4rem] text-center text-sm font-semibold tabular-nums tracking-widest text-white/60" aria-live="polite">{slide.count ? copy.slideOf(slide.page, slide.count) : ''}</p>
+        <button type="button" tabIndex={viewing ? 0 : -1} aria-label={copy.closeHint} onClick={(e) => { e.currentTarget.blur(); actions.current.leave?.() }} className="flex cursor-default items-center gap-2">
+          <span className="block h-12 w-12"><Glyph><circle cx="16" cy="16" r="13" /><path d="M11.5 10.5l9 11M20.5 10.5l-9 11" /></Glyph></span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-white/60">{copy.close}</span>
         </button>
       </div>
       {state === 'ready' && !moved && <p className={`pointer-events-none absolute bottom-6 left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 px-4 py-2 text-center text-sm ${chip}`}>{touch ? copy.hintTouch : copy.hint}</p>}
