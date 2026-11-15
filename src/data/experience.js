@@ -18,6 +18,12 @@ export const experience = {
   // the light), 0.5 is half a stop, 0 switches it off.
   exposureUp: 1, // stops brighter when looking as far up as possible
   exposureDown: 1, // stops darker when looking as far down as possible
+  // Film grain over the whole picture. `amount` 0 switches it off.
+  grain: {
+    amount: 0.05, // how strong: 0.03 is barely there, 0.15 is heavy
+    size: 1.4, // how big each grain is, in screen px
+    fps: 24, // how many times a second the pattern changes, like frames of film
+  },
   // The handheld feel. Turning and looking up or down with the arrow keys has momentum: it picks up speed, coasts to a
   // stop, and the camera leans into the turn. Left alone, the camera drifts very slightly, as if
   // someone were holding it. All of it is switched off for people whose device asks for reduced motion.
