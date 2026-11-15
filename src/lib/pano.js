@@ -32,16 +32,27 @@ void main() {
   gl_Position = vec4(d.x * uLens.x, d.y * uLens.y, d.z - 0.2, d.z);
 }`
 const FRAGMENT = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform sampler2D uImage;
+uniform vec3 uGrain; // film grain: (strength, size of a grain in screen px, a number that changes each film frame)
 uniform vec2 uGrade; // the exposure adjustment: (darken, lift); (1, 1) leaves the picture as it is
 uniform float uAlpha; // 1 is solid; less lets what is behind show through (used for slides)
 varying vec2 vUv;
+float speck(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
   // Darker is a plain cut in exposure. Brighter lifts the shadows and mid-tones towards white
   // instead of scaling everything up, so areas that are already bright don't hit a ceiling.
   vec3 c = texture2D(uImage, vUv).rgb * uGrade.x;
   c = 1.0 - pow(1.0 - c, vec3(uGrade.y));
+  // Film grain: fine grey specks that change every film frame, strongest in the mid-tones.
+  vec2 cell = floor(gl_FragCoord.xy / uGrain.y) + uGrain.z;
+  float noise = (speck(cell) + speck(cell + 37.0)) - 1.0;
+  float light = dot(c, vec3(0.299, 0.587, 0.114));
+  c += noise * uGrain.x * (1.0 - 0.6 * abs(2.0 * light - 1.0));
   gl_FragColor = vec4(c, uAlpha);
 }`
 
@@ -95,6 +106,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
   let loading = 0
   let dead = false
   let tick = 0
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   function build() {
     const shader = (type, source) => {
@@ -108,7 +120,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAGMENT))
     gl.linkProgram(program)
     gl.useProgram(program)
-    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGrade', 'uAlpha'].map((name) => [name, gl.getUniformLocation(program, name)]))
+    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGrade', 'uAlpha', 'uGrain'].map((name) => [name, gl.getUniformLocation(program, name)]))
 
     const points = []
     const at = (i, j) => points.push(i / GRID, j / GRID)
@@ -241,6 +253,11 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     const stops = exposure()
     gl.uniform2f(uniforms.uGrade, 2 ** Math.min(stops, 0), 2 ** Math.max(stops, 0))
     gl.uniform1f(uniforms.uAlpha, 1)
+    const grain = settings.grain
+    const scale = canvas.width / Math.max(1, canvas.clientWidth)
+    // The grain pattern changes `fps` times a second (held still for reduced motion).
+    const filmFrame = still ? 0 : Math.floor((performance.now() / 1000) * grain.fps) % 997
+    gl.uniform3f(uniforms.uGrain, grain.amount, Math.max(1, grain.size * scale), filmFrame * 1.37)
 
     // The preview, everywhere, in eight slices; then every sharp tile that has arrived, on top.
     for (let i = 0; i < 8; i++) paint(preview, [-Math.PI + (i * TAU) / 8, TAU / 8, Math.PI / 2, Math.PI], [i / 8, 0, 1 / 8, 1])
