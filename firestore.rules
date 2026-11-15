@@ -44,6 +44,22 @@ service cloud.firestore {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
     }
 
+    // pads/{code}: how a phone at /experience/controller finds the screen at /experience it is
+    // pairing with (src/lib/padLink.js). Nobody signs in on those pages, so anyone may read and
+    // write one, but only its two connection notes (text, limited in size) under a 5-character
+    // code. They hold nothing private, and nothing here can be listed.
+    match /pads/{code} {
+      function note(data, key) {
+        return !(key in data) || (data[key] is string && data[key].size() < 8000);
+      }
+      allow get: if true;
+      allow create, update: if code.matches('^[A-Z2-9]{5}$')
+        && request.resource.data.keys().hasOnly(['offer', 'answer', 'at'])
+        && request.resource.data.offer is string && request.resource.data.offer.size() < 8000
+        && note(request.resource.data, 'answer')
+        && request.resource.data.at is number;
+    }
+
     // portal/{doc}: what the team portal shows (e.g. portal/welcome).
     match /portal/{doc} {
       allow get: if isTeam();

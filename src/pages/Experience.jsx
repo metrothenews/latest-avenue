@@ -38,6 +38,15 @@ export default function Experience() {
   const ring = useRef(null) // the outline around the computer being looked at
   const prompt = useRef(null) // the "A" button beside it
   const actions = useRef({})
+  const [padOpen, setPadOpen] = useState(false) // the "connect a controller" panel
+  const [padInfo, setPadInfo] = useState({ code: '', state: 'off', qr: null }) // state: off | waiting | connected | failed
+
+  // The panel closes by itself once a controller is connected.
+  useEffect(() => {
+    if (padInfo.state !== 'connected') return
+    const timer = setTimeout(() => setPadOpen(false), 900)
+    return () => clearTimeout(timer)
+  }, [padInfo.state])
   const canFull = typeof document !== 'undefined' && Boolean(document.fullscreenEnabled || document.webkitFullscreenEnabled)
 
   function toggleFull() {
@@ -91,7 +100,12 @@ export default function Experience() {
       const dt = ms / 1000
       then = now
       let [dx, dy] = [0, 0]
-      if (!show.on) for (const key of held) { dx += KEYS[key][0]; dy += KEYS[key][1] }
+      if (!show.on) {
+        for (const key of held) { dx += KEYS[key][0]; dy += KEYS[key][1] }
+        // The phone controller's stick adds to the keys: a gentle push turns slowly.
+        dx = Math.max(-1, Math.min(1, dx + pad.x))
+        dy = Math.max(-1, Math.min(1, dy + pad.y))
+      }
 
       if (calm) {
         // Reduced motion: a steady turn while a key is down, nothing else.
@@ -108,7 +122,7 @@ export default function Experience() {
       if (dx) {
         speed = 0
         turn += (dx * fastest - turn) * (1 - Math.exp(-dt / hand.speedUp))
-        if (turn * dx >= 0 && Math.abs(turn) < slowest) turn = dx * slowest
+        if (turn * dx >= 0 && Math.abs(turn) < slowest * Math.abs(dx)) turn = dx * slowest
       } else {
         turn *= Math.exp(-dt / hand.slowDown)
         if (Math.abs(turn) < slowest / 12) turn = 0
@@ -118,7 +132,7 @@ export default function Experience() {
       const highest = Math.min(fastest, copy.maxTiltSpeed * rad)
       if (dy && (up || down)) {
         lift += (dy * highest - lift) * (1 - Math.exp(-dt / hand.speedUp))
-        if (lift * dy >= 0 && Math.abs(lift) < slowest) lift = dy * slowest
+        if (lift * dy >= 0 && Math.abs(lift) < slowest * Math.abs(dy)) lift = dy * slowest
       } else {
         lift *= Math.exp(-dt / hand.slowDown)
         if (Math.abs(lift) < slowest / 12) lift = 0
@@ -162,6 +176,9 @@ export default function Experience() {
     const spots = copy.computers.map((c) => ({ id: c.id, body: centre(c.body, copy.panoWidth), ring: outline(c.body, copy.panoWidth, 26), screen: c.screen }))
     const show = { on: false, spot: null, page: 1, count: 0, ratio: 4 / 3, deck: null, shown: 0, speed: [0, 0, 0] } // `spot` is the one locked on to
     let lockedOn = null
+    const pad = { x: 0, y: 0, armed: true } // the phone controller's stick, -1..1 each way
+    let padHost = null // stops listening for a controller
+    let gone = false
 
     function deck() {
       if (!show.deck) {
@@ -205,7 +222,48 @@ export default function Experience() {
       show.on = false
       setViewing(false)
     }
-    actions.current = { enter, leave, go: (by) => go(show.page + by) }
+    actions.current = { enter, leave, go: (by) => go(show.page + by), startPad }
+
+    // --- The phone controller (/experience/controller): its stick and its A and X buttons ---
+    function padMessage(m) {
+      const pc = copy.controller
+      // Ignore the first little bit of travel, then run smoothly from 0 to 1.
+      const eased = (v) => (Math.abs(v) < pc.deadZone ? 0 : (Math.sign(v) * (Math.abs(v) - pc.deadZone)) / (1 - pc.deadZone))
+      if (m.t === 'stick' && Number.isFinite(m.x) && Number.isFinite(m.y)) {
+        pad.x = eased(Math.max(-1, Math.min(1, m.x)))
+        pad.y = eased(Math.max(-1, Math.min(1, m.y)))
+        if (pad.x || pad.y) setMoved(true)
+        // With slides showing, a push to one side is the next or the previous slide.
+        if (Math.abs(m.x) < pc.flick / 2) pad.armed = true
+        else if (show.on && pad.armed && Math.abs(m.x) > pc.flick) { pad.armed = false; go(show.page + Math.sign(m.x)) }
+      }
+      if (m.t === 'down' && m.b === 'a') enter()
+      if (m.t === 'down' && m.b === 'x') leave()
+    }
+    // Shows this screen's pairing code and waits for a controller (once; it keeps listening).
+    async function startPad() {
+      if (padHost) return
+      padHost = () => {}
+      try {
+        const [{ hostPad, newCode }, { default: qrcode }] = await Promise.all([import('../lib/padLink.js'), import('qrcode-generator')])
+        if (gone) return
+        const code = newCode()
+        const qr = qrcode(0, 'M')
+        qr.addData(`${window.location.origin}/experience/controller?c=${code}`)
+        qr.make()
+        const size = qr.getModuleCount()
+        let d = ''
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (qr.isDark(y, x)) d += `M${x} ${y}h1v1h-1z`
+        setPadInfo({ code, state: 'waiting', qr: { size, d } })
+        padHost = hostPad(code, padMessage, (state) => {
+          if (state !== 'connected') { pad.x = 0; pad.y = 0 }
+          setPadInfo((info) => ({ ...info, state }))
+        })
+      } catch {
+        padHost = null
+        setPadInfo((info) => ({ ...info, state: 'failed' }))
+      }
+    }
 
     // Runs every frame: which computer is being looked at, the move in and out, the slide, and
     // where the outline and the prompt are on the page.
@@ -360,6 +418,8 @@ export default function Experience() {
     return () => {
       cancelAnimationFrame(loop)
       sizes.disconnect()
+      gone = true
+      padHost?.()
       show.deck?.close()
       window.removeEventListener('keydown', keyDown)
       window.removeEventListener('keyup', keyUp)
@@ -383,6 +443,37 @@ export default function Experience() {
             {full ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
           </svg>
         </button>
+      )}
+      {/* Connect a phone as a controller: shows this screen's code (and a QR code for it). */}
+      {state === 'ready' && (
+        <button
+          type="button" aria-label={copy.controller.open} title={copy.controller.open}
+          onClick={(e) => { e.currentTarget.blur(); setPadOpen(true); actions.current.startPad?.() }}
+          className={`absolute top-4 flex h-11 w-11 items-center justify-center hover:text-white ${canFull ? 'right-[4.25rem]' : 'right-4'} ${chip} ${padInfo.state === 'connected' ? 'text-white' : ''}`}
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2.5" y="7" width="19" height="10" rx="5" /><path d="M7.5 10.5v3M6 12h3" /><circle cx="15.2" cy="13.2" r="0.6" fill={padInfo.state === 'connected' ? 'currentColor' : 'none'} /><circle cx="17.8" cy="10.8" r="0.6" fill={padInfo.state === 'connected' ? 'currentColor' : 'none'} />
+          </svg>
+        </button>
+      )}
+      {padOpen && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={copy.controller.title}>
+          <div className="flex max-h-full w-full max-w-xs flex-col items-center gap-4 overflow-y-auto rounded-2xl border-2 border-white/50 bg-black/80 p-6 text-center text-white">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-white/70">{copy.controller.title}</h2>
+            {padInfo.qr && (
+              <svg viewBox={`-2 -2 ${padInfo.qr.size + 4} ${padInfo.qr.size + 4}`} className="h-40 w-40 rounded-lg bg-white" shapeRendering="crispEdges" role="img" aria-label="QR code">
+                <path d={padInfo.qr.d} fill="black" />
+              </svg>
+            )}
+            <p className="text-sm text-white/70">{copy.controller.steps}</p>
+            <p className="text-xs text-white/50">{copy.controller.address}</p>
+            <p className="select-text text-4xl font-semibold tracking-[0.3em]">{padInfo.code || '·····'}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/60" role="status">
+              {{ off: copy.controller.waiting, waiting: copy.controller.waiting, connected: copy.controller.connected, failed: copy.controller.failed }[padInfo.state]}
+            </p>
+            <button type="button" onClick={() => setPadOpen(false)} className="h-11 w-full rounded-full border-2 border-white/50 text-sm font-semibold uppercase tracking-widest hover:border-white">{copy.controller.done}</button>
+          </div>
+        </div>
       )}
       {/* Looking at a computer: a thin outline around it, then the "A" button above it (space bar, or tap it). */}
       <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
