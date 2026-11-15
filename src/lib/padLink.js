@@ -1,102 +1,82 @@
-// The live link between /experience (the "screen") and /experience/controller (the "pad").
+// The live link between /experience (the "screen") and /experience/controller (the "pad"),
+// through Firebase's Realtime Database: the pad writes what its stick and buttons are doing, and
+// the screen, which is listening to the same spot, gets each change as it happens.
 //
-// The two pages talk straight to each other over a WebRTC data channel, so a stick movement
-// reaches the screen in a few milliseconds and nothing is sent through the database while
-// playing. The database is only used to introduce them: the screen saves an "offer" under its
-// pairing code, the pad reads it and saves an "answer" (firestore.rules: pads/{code}).
-// If the link drops, the screen makes a new offer under the same code and the pad picks it up.
-import { doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore'
+// Stored at pads/{code} (database.rules.json), where `code` is the pairing code the screen shows:
+//   host:  when the screen opened it (removed when the screen's page closes, with everything else)
+//   pad:   true while a controller is connected (removed when its page closes)
+//   input: { x, y, a, b }: the stick, -1..1 each way (up is +y), and how many times A and X
+//          ("b") have been pressed (the screen acts when a count goes up)
+import { getApp } from 'firebase/app'
+import { getDatabase, onDisconnect, onValue, ref, remove, serverTimestamp, set, update } from 'firebase/database'
 import './firebase.js'
-import { db } from './team.js'
+import { databaseURL } from '../data/firebase.js'
 
-const PADS = 'pads'
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O or 1/I to mix up
-const SERVERS = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-
 export const CODE_LENGTH = 5
 export const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(CODE_LENGTH)), (n) => ALPHABET[n % ALPHABET.length]).join('')
-export const cleanCode = (text) => (text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH)
 
-// The offer or answer once the browser has found the ways it can be reached (or after 3 seconds).
-function described(pc) {
-  return new Promise((resolve) => {
-    const done = () => resolve(pc.localDescription.sdp)
-    if (pc.iceGatheringState === 'complete') return done()
-    const timer = setTimeout(done, 3000)
-    pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(timer); done() } })
-  })
-}
+const db = getDatabase(getApp(), databaseURL)
+const at = (code, path = '') => ref(db, `pads/${code}${path && `/${path}`}`)
 
-// The screen's side. onMessage(object) for everything the pad sends; onState('waiting' |
-// 'connected'). Returns stop().
+// The screen's side. onMessage({ t: 'stick', x, y } | { t: 'down', b: 'a' | 'x' }) for what the
+// pad does; onState('waiting' | 'connected' | 'failed'). Returns stop().
 export function hostPad(code, onMessage, onState) {
-  let pc = null
-  let stopped = false
-  let stopWatching = () => {}
-
-  async function offer() {
-    if (stopped) return
-    stopWatching()
-    pc?.close()
-    onState('waiting')
-    const mine = (pc = new RTCPeerConnection(SERVERS))
-    const channel = mine.createDataChannel('pad')
-    channel.onopen = () => mine === pc && onState('connected')
-    channel.onmessage = (e) => { try { onMessage(JSON.parse(e.data)) } catch { /* not ours */ } }
-    const again = () => { if (mine === pc && !stopped) offer() }
-    channel.onclose = again
-    mine.onconnectionstatechange = () => { if (['failed', 'disconnected', 'closed'].includes(mine.connectionState)) again() }
-    await mine.setLocalDescription(await mine.createOffer())
-    const sdp = await described(mine)
-    if (mine !== pc || stopped) return
-    await setDoc(doc(db, PADS, code), { offer: sdp, at: Date.now() })
-    stopWatching = onSnapshot(doc(db, PADS, code), (snap) => {
-      const data = snap.data()
-      if (mine !== pc || !data?.answer || data.offer !== sdp || mine.signalingState !== 'have-local-offer') return
-      mine.setRemoteDescription({ type: 'answer', sdp: data.answer }).catch(() => {})
-    }, () => {})
-  }
-  offer().catch(() => onState('failed'))
-
-  return () => { stopped = true; stopWatching(); pc?.close() }
+  let presses = null // the last counts seen, so only new presses count
+  onState('waiting')
+  onDisconnect(at(code)).remove().catch(() => {})
+  set(at(code), { host: serverTimestamp() }).catch(() => onState('failed'))
+  const stops = [
+    onValue(at(code, 'pad'), (snap) => onState(snap.val() ? 'connected' : 'waiting'), () => onState('failed')),
+    onValue(at(code, 'input'), (snap) => {
+      const input = snap.val()
+      if (!input) { presses = null; return onMessage({ t: 'stick', x: 0, y: 0 }) }
+      onMessage({ t: 'stick', x: Number(input.x) || 0, y: Number(input.y) || 0 })
+      const counts = { a: Number(input.a) || 0, x: Number(input.b) || 0 }
+      if (presses) for (const b of ['a', 'x']) if (counts[b] > presses[b]) onMessage({ t: 'down', b })
+      presses = counts
+    }, () => {}),
+  ]
+  return () => { stops.forEach((stop) => stop()); remove(at(code)).catch(() => {}) }
 }
 
-// The pad's side. onState('connecting' | 'connected' | 'unknown' (no screen has that code) |
-// 'failed'). Returns { send(object), stop() }.
+// The pad's side. onState('connecting' | 'connected' | 'unknown' (no screen is showing that
+// code) | 'failed'). Returns { stick(x, y), press('a' | 'x'), stop() }.
 export function joinPad(code, onState) {
-  let pc = null
-  let channel = null
-  let answered = ''
-  let stopped = false
+  const input = { x: 0, y: 0, a: 0, b: 0 }
+  let live = false // a screen is there and we are connected to the database
+  let hosted = false
+  let online = false
   onState('connecting')
 
-  async function answer(sdp) {
-    answered = sdp
-    pc?.close()
-    channel = null
-    onState('connecting')
-    const mine = (pc = new RTCPeerConnection(SERVERS))
-    mine.ondatachannel = (e) => {
-      channel = e.channel
-      channel.onopen = () => mine === pc && onState('connected')
-      channel.onclose = () => mine === pc && onState('connecting') // the screen will offer again
+  function settle() {
+    const now = hosted && online
+    if (now && !live) {
+      // (Re)join: say we're here, and clear ourselves away if this page closes or drops.
+      onDisconnect(at(code, 'pad')).remove().catch(() => {})
+      onDisconnect(at(code, 'input')).update({ x: 0, y: 0 }).catch(() => {})
+      set(at(code, 'pad'), true).catch(() => onState('failed'))
+      update(at(code, 'input'), input).catch(() => {})
     }
-    await mine.setRemoteDescription({ type: 'offer', sdp })
-    await mine.setLocalDescription(await mine.createAnswer())
-    const reply = await described(mine)
-    if (mine !== pc || stopped) return
-    await updateDoc(doc(db, PADS, code), { answer: reply })
+    live = now
+    onState(now ? 'connected' : online && !hosted ? 'unknown' : 'connecting')
   }
-
-  const ref = doc(db, PADS, code)
-  getDoc(ref).then((snap) => { if (!snap.exists() && !stopped) onState('unknown') }, () => onState('failed'))
-  const stopWatching = onSnapshot(ref, (snap) => {
-    const data = snap.data()
-    if (data?.offer && data.offer !== answered && !data.answer) answer(data.offer).catch(() => onState('failed'))
-  }, () => onState('failed'))
+  let heard = false
+  const stops = [
+    onValue(ref(db, '.info/connected'), (snap) => { online = Boolean(snap.val()); if (heard || !online) settle() }),
+    onValue(at(code, 'host'), (snap) => { heard = true; hosted = snap.exists(); settle() }, () => onState('failed')),
+  ]
 
   return {
-    send(message) { if (channel?.readyState === 'open') channel.send(JSON.stringify(message)) },
-    stop() { stopped = true; stopWatching(); pc?.close() },
+    stick(x, y) { input.x = x; input.y = y; if (live) update(at(code, 'input'), { x, y }).catch(() => {}) },
+    press(button) {
+      const key = button === 'a' ? 'a' : 'b'
+      input[key] += 1
+      if (live) update(at(code, 'input'), { [key]: input[key] }).catch(() => {})
+    },
+    stop() {
+      stops.forEach((stop) => stop())
+      if (live) { remove(at(code, 'pad')).catch(() => {}); update(at(code, 'input'), { x: 0, y: 0 }).catch(() => {}) }
+    },
   }
 }
