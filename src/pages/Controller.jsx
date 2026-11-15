@@ -43,8 +43,6 @@ export default function Controller() {
     return () => { document.removeEventListener('visibilitychange', back); lock?.release().catch(() => {}) }
   }, [])
 
-  const send = (message) => link.current?.send(message)
-
   // The stick: where the finger is from the middle of the ring, as -1..1 each way (up is +y).
   function stickMove(e) {
     const s = stick.current
@@ -62,9 +60,9 @@ export default function Controller() {
     s.x = x
     s.y = y
     setKnob({ x, y })
-    // Send at most 40 times a second, and always send the latest position.
-    const push = () => { s.timer = 0; s.sent = performance.now(); send({ t: 'stick', x: Number(s.x.toFixed(3)), y: Number(s.y.toFixed(3)) }) }
-    const wait = 25 - (performance.now() - s.sent)
+    // Send at most 30 times a second, and always send the latest position.
+    const push = () => { s.timer = 0; s.sent = performance.now(); link.current?.stick(Number(s.x.toFixed(2)), Number(s.y.toFixed(2))) }
+    const wait = 33 - (performance.now() - s.sent)
     if (wait <= 0) push()
     else if (!s.timer) s.timer = setTimeout(push, wait)
   }
@@ -81,9 +79,9 @@ export default function Controller() {
   }
 
   const button = (name) => ({
-    onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); setPressed((p) => ({ ...p, [name]: true })); navigator.vibrate?.(8); send({ t: 'down', b: name }) },
-    onPointerUp: () => { setPressed((p) => ({ ...p, [name]: false })); send({ t: 'up', b: name }) },
-    onPointerCancel: () => { setPressed((p) => ({ ...p, [name]: false })); send({ t: 'up', b: name }) },
+    onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); setPressed((p) => ({ ...p, [name]: true })); navigator.vibrate?.(8); link.current?.press(name) },
+    onPointerUp: () => setPressed((p) => ({ ...p, [name]: false })),
+    onPointerCancel: () => setPressed((p) => ({ ...p, [name]: false })),
     onContextMenu: (e) => e.preventDefault(),
   })
 
