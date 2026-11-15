@@ -61,6 +61,32 @@ export const experience = {
   close: 'Back',
   closeHint: 'Back (X key)',
   slideOf: (n, count) => `${n} / ${count}`,
+  // The phone controller (/experience/controller). The screen shows a code (and a QR code for
+  // it); a phone that opens the controller with that code steers this screen.
+  controller: {
+    open: 'Connect a controller',
+    title: 'Controller',
+    steps: 'Scan this with your phone, or open the address below on it and enter the code.',
+    address: 'latestavenue.com/experience/controller',
+    waiting: 'Waiting for a controller',
+    connected: 'Controller connected',
+    failed: "Couldn't set up the link. Check your connection and try again.",
+    done: 'Done',
+    deadZone: 0.14, // how far the stick moves before it counts (0 to 1)
+    flick: 0.6, // how far the stick is pushed sideways to change slide (0 to 1)
+    // The controller page itself.
+    pageTitle: 'controller',
+    enterCode: 'Enter the code on the screen',
+    connect: 'Connect',
+    connecting: 'Connecting',
+    linked: 'Connected',
+    unknown: 'No screen is showing that code',
+    lost: "Couldn't connect. Check both devices are online and try again.",
+    change: 'Change code',
+    stick: 'Stick: look around',
+    a: 'A button',
+    x: 'X button',
+  },
   hint: 'Drag, or use the arrow keys, to look around',
   hintTouch: 'Drag to look around',
   enterFullscreen: 'Full screen',

@@ -32,6 +32,7 @@ const TeamAssignments = lazy(() => import('./pages/TeamAssignments.jsx'))
 const Global = lazy(() => import('./pages/Global.jsx'))
 // The 360° view fills the whole screen, so it sits outside the site layout.
 const Experience = lazy(() => import('./pages/Experience.jsx'))
+const Controller = lazy(() => import('./pages/Controller.jsx'))
 
 export default function App() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
             <Route path="*" element={<NotFound />} />
           </Route>
           <Route path="/experience" element={<Experience />} />
+          <Route path="/experience/controller" element={<Controller />} />
           {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. */}
           <Route element={<AuthProvider />}>
             <Route element={<AuthLayout />}>
