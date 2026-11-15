@@ -34,10 +34,16 @@ void main() {
 const FRAGMENT = `
 precision mediump float;
 uniform sampler2D uImage;
-uniform float uGain; // brightness: 1 leaves the picture as it is
+uniform vec2 uGrade; // the exposure adjustment: (darken, lift); (1, 1) leaves the picture as it is
 uniform float uAlpha; // 1 is solid; less lets what is behind show through (used for slides)
 varying vec2 vUv;
-void main() { gl_FragColor = vec4(texture2D(uImage, vUv).rgb * uGain, uAlpha); }`
+void main() {
+  // Darker is a plain cut in exposure. Brighter lifts the shadows and mid-tones towards white
+  // instead of scaling everything up, so areas that are already bright don't hit a ceiling.
+  vec3 c = texture2D(uImage, vUv).rgb * uGrade.x;
+  c = 1.0 - pow(1.0 - c, vec3(uGrade.y));
+  gl_FragColor = vec4(c, uAlpha);
+}`
 
 const TAU = Math.PI * 2
 const wrap = (angle) => angle - TAU * Math.round(angle / TAU) // into -π..π
@@ -102,7 +108,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAGMENT))
     gl.linkProgram(program)
     gl.useProgram(program)
-    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGain', 'uAlpha'].map((name) => [name, gl.getUniformLocation(program, name)]))
+    uniforms = Object.fromEntries(['uArea', 'uUv', 'uView', 'uLens', 'uGrade', 'uAlpha'].map((name) => [name, gl.getUniformLocation(program, name)]))
 
     const points = []
     const at = (i, j) => points.push(i / GRID, j / GRID)
@@ -134,13 +140,14 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
 
   const rad = Math.PI / 180
   const limits = () => (settings.lookUpDown ? [settings.maxUp * rad, settings.maxDown * rad] : [0, 0])
-  // Brightness for where we're looking: up to `brighterUp` more at the top limit, `darkerDown`
-  // less at the bottom limit, and in proportion in between.
+  // The exposure adjustment for where we're looking, in photographic stops (+1 is twice the
+  // light, -1 half): `exposureUp` at the top limit, minus `exposureDown` at the bottom limit, and
+  // in proportion in between. It is applied to everything drawn, like an adjustment layer.
   function exposure() {
     const [up, down] = limits()
-    if (view.pitch > 0 && up) return 1 + settings.brighterUp * (view.pitch / up)
-    if (view.pitch < 0 && down) return 1 - settings.darkerDown * (-view.pitch / down)
-    return 1
+    if (view.pitch > 0 && up) return settings.exposureUp * (view.pitch / up)
+    if (view.pitch < 0 && down) return -settings.exposureDown * (-view.pitch / down)
+    return 0
   }
 
   const field = () => {
@@ -231,7 +238,8 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.uniform3f(uniforms.uView, view.yaw + sway.yaw, view.pitch + sway.pitch, sway.roll)
     gl.uniform2f(uniforms.uLens, 1 / f.x, 1 / f.y)
-    gl.uniform1f(uniforms.uGain, exposure())
+    const stops = exposure()
+    gl.uniform2f(uniforms.uGrade, 2 ** Math.min(stops, 0), 2 ** Math.max(stops, 0))
     gl.uniform1f(uniforms.uAlpha, 1)
 
     // The preview, everywhere, in eight slices; then every sharp tile that has arrived, on top.
@@ -251,7 +259,6 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     const slide = stage.slide
     if (slide && slide.alpha > 0.003 && (slide.from || slide.to)) {
       gl.enable(gl.BLEND)
-      gl.uniform1f(uniforms.uGain, 1)
       const fading = slide.from && slide.to && slide.mix < 1
       if (slide.from && (fading || !slide.to)) { gl.uniform1f(uniforms.uAlpha, slide.alpha); paint(slide.from, slide.area, [0, 0, 1, 1]) }
       if (slide.to) { gl.uniform1f(uniforms.uAlpha, slide.alpha * (fading ? slide.mix : 1)); paint(slide.to, slide.area, [0, 0, 1, 1]) }
