@@ -44,18 +44,76 @@ export default function Experience() {
       }
     }
 
+    const hand = copy.handheld
+    const rad = Math.PI / 180
+    const pick = (most) => (Math.random() * 2 - 1) * most * rad
+    let turn = 0 // radians per second, from the arrow keys (with momentum)
+    let roll = 0 // radians: the lean into a turn
+    let rollSpeed = 0
+    const drift = { at: 0, level: 0, now: [0, 0, 0], speed: [0, 0, 0], to: [0, 0, 0] } // the idle wander: pan, tilt, roll
+
+    // Moves `value` towards `target` like a weight on a spring: no sudden starts or stops.
+    // `time` is roughly how long it takes; `bounce` below 1 lets it overshoot a touch.
+    function spring(value, speed, target, time, dt, bounce = 1) {
+      const w = 2.4 / time
+      speed += (w * w * (target - value) - 2 * bounce * w * speed) * dt
+      return [value + speed * dt, speed]
+    }
+
     function step(now) {
-      const dt = Math.min(50, now - then)
+      const ms = Math.min(50, now - then)
+      const dt = ms / 1000
       then = now
       let [dx, dy] = [0, 0]
       for (const key of held) { dx += KEYS[key][0]; dy += KEYS[key][1] }
-      const rate = (copy.keySpeed * Math.PI) / 180 / 1000
-      if (dx || dy) { speed = 0; pano.set(pano.view.yaw + dx * rate * dt, pano.view.pitch + dy * rate * dt) }
-      else if (!drag && Math.abs(speed) > 0.00002) { pano.set(pano.view.yaw + speed * dt); speed *= Math.exp(-dt / 320) }
-      else { loop = 0; return }
+
+      if (calm) {
+        // Reduced motion: a steady turn while a key is down, nothing else.
+        const rate = copy.keySpeed * rad
+        if (dx || dy) pano.set(pano.view.yaw + dx * rate * dt, pano.view.pitch + dy * rate * dt)
+        else { loop = 0; return }
+        loop = requestAnimationFrame(step)
+        return
+      }
+
+      // Turning: ease up to full speed while a key is down, coast down after.
+      const [slowest, fastest] = [hand.minSpeed * rad, hand.maxSpeed * rad]
+      if (dx) {
+        speed = 0
+        turn += (dx * fastest - turn) * (1 - Math.exp(-dt / hand.speedUp))
+        if (turn * dx >= 0 && Math.abs(turn) < slowest) turn = dx * slowest
+      } else {
+        turn *= Math.exp(-dt / hand.slowDown)
+        if (Math.abs(turn) < slowest / 12) turn = 0
+      }
+      let yaw = pano.view.yaw + turn * dt
+      if (!drag && !dx && Math.abs(speed) > 0.00002) { yaw += speed * ms; speed *= Math.exp(-ms / 320) } // the coast after a swipe
+      else if (!drag) speed = 0
+      if (!drag) pano.set(yaw, pano.view.pitch + dy * copy.keySpeed * rad * dt)
+
+      // The lean follows the turning speed, and straightens when it stops.
+      ;[roll, rollSpeed] = spring(roll, rollSpeed, (turn / fastest) * hand.maxRoll * rad, hand.rollTime, dt, 0.8)
+
+      // The idle wander: now and then pick new tiny offsets and drift towards them. It fades
+      // down while the view is being moved and comes back once it's still.
+      const idle = hand.idle
+      if (now >= drift.at) {
+        drift.to = [pick(idle.pan), pick(idle.tilt), pick(idle.roll)]
+        drift.at = now + (idle.every[0] + Math.random() * (idle.every[1] - idle.every[0])) * 1000
+      }
+      for (let i = 0; i < 3; i++) [drift.now[i], drift.speed[i]] = spring(drift.now[i], drift.speed[i], drift.to[i], idle.ease, dt)
+      const moving = Boolean(dx || drag || turn || speed)
+      drift.level += ((moving ? idle.whileMoving : 1) - drift.level) * (1 - Math.exp(-dt / idle.settle))
+      pano.sway.yaw = drift.now[0] * drift.level
+      pano.sway.pitch = drift.now[1] * drift.level
+      pano.sway.roll = roll + drift.now[2] * drift.level
+      pano.draw()
       loop = requestAnimationFrame(step)
     }
     const run = () => { if (!loop) { then = performance.now(); loop = requestAnimationFrame(step) } }
+    // The handheld camera never quite holds still, so its loop runs all the time (the browser
+    // pauses it while the tab is in the background).
+    if (!calm) run()
 
     function down(e) {
       if (e.button) return
