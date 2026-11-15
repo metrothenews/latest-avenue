@@ -17,7 +17,7 @@ const VERTEX = `
 attribute vec2 a;
 uniform vec4 uArea;   // lon0, lonSpan, latTop, latSpan (radians)
 uniform vec4 uUv;     // u0, v0, uSpan, vSpan
-uniform vec2 uView;   // yaw, pitch
+uniform vec3 uView;   // yaw, pitch, roll
 uniform vec2 uLens;   // 1 / tan(half field of view): across, up
 varying vec2 vUv;
 void main() {
@@ -26,6 +26,8 @@ void main() {
   vec3 d = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
   float c = cos(uView.y), s = sin(uView.y);
   d = vec3(d.x, d.y * c - d.z * s, d.y * s + d.z * c);
+  float rc = cos(uView.z), rs = sin(uView.z);
+  d = vec3(d.x * rc - d.y * rs, d.x * rs + d.y * rc, d.z);
   vUv = uUv.xy + a * uUv.zw;
   gl_Position = vec4(d.x * uLens.x, d.y * uLens.y, d.z - 0.2, d.z);
 }`
@@ -64,13 +66,16 @@ async function loadImage(url) {
 }
 
 // Starts the view on `canvas`. `settings` is data/experience.js. Calls onReady() once the first
-// image is on screen and onError() if it can't start. Returns { view, set(yaw, pitch), draw(),
-// resize(), destroy() }; `view` is { yaw, pitch } in radians, with yaw growing as you turn right.
+// image is on screen and onError() if it can't start. Returns { view, sway, set(yaw, pitch), draw(),
+// resize(), destroy() }; `view` is { yaw, pitch } in radians, with yaw growing as you turn right;
+// `sway` is { yaw, pitch, roll } added on top when drawing (set it, then call draw()).
 export function startPano(canvas, settings, { onReady = () => {}, onError = () => {} } = {}) {
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' })
   if (!gl) return null
 
   const view = { yaw: (settings.startYaw * Math.PI) / 180, pitch: 0 }
+  // Small extra movement on top of where the visitor is looking (the handheld feel): radians.
+  const sway = { yaw: 0, pitch: 0, roll: 0 }
   const tiles = new Map() // "level/row_col" → { texture | null (loading), used }
   let manifest = null
   let preview = null
@@ -189,14 +194,14 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
     const f = field()
     gl.viewport(0, 0, canvas.width, canvas.height)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.uniform2f(uniforms.uView, view.yaw, view.pitch)
+    gl.uniform3f(uniforms.uView, view.yaw + sway.yaw, view.pitch + sway.pitch, sway.roll)
     gl.uniform2f(uniforms.uLens, 1 / f.x, 1 / f.y)
 
     // The preview, everywhere, in eight slices; then every sharp tile that has arrived, on top.
     for (let i = 0; i < 8; i++) paint(preview, [-Math.PI + (i * TAU) / 8, TAU / 8, Math.PI / 2, Math.PI], [i / 8, 0, 1 / 8, 1])
     if (manifest.levels.length) {
       const level = pickLevel(f)
-      for (const tile of tilesInView(level, f, 0)) {
+      for (const tile of tilesInView(level, f, 0.06)) { // a little extra for the sway and roll
         const loaded = tiles.get(tile.key)
         if (!loaded?.texture) continue
         loaded.used = tick
@@ -241,6 +246,7 @@ export function startPano(canvas, settings, { onReady = () => {}, onError = () =
 
   return {
     view,
+    sway,
     field,
     set(yaw, pitch = view.pitch) {
       const limit = settings.lookUpDown ? (settings.maxPitch * Math.PI) / 180 : 0
