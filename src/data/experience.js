@@ -14,8 +14,8 @@ export const experience = {
   maxDown: 18, // degrees: a fifth of the way to straight down
   maxTiltSpeed: 40, // degrees per second: the fastest it looks up or down
   // The picture brightens as you look up and darkens as you look down, evenly in between.
-  brighterUp: 0.15, // 15% brighter when looking as far up as possible
-  darkerDown: 0.1, // 10% darker when looking as far down as possible
+  brighterUp: 0.4, // 40% brighter when looking as far up as possible
+  darkerDown: 0.3, // 30% darker when looking as far down as possible
   // The handheld feel. Turning and looking up or down with the arrow keys has momentum: it picks up speed, coasts to a
   // stop, and the camera leans into the turn. Left alone, the camera drifts very slightly, as if
   // someone were holding it. All of it is switched off for people whose device asks for reduced motion.
