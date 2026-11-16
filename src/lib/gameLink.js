@@ -64,11 +64,12 @@ export function openGame(code, onGame, onError) {
 
 // Joins a room. onState gets, whenever anything changes:
 //   { status: 'joining' | 'in' | 'unknown' | 'full' | 'over' | 'failed', phase, endsAt, game,
-//     ballot: { 1, 2 }, authors: { 1, 2 }, finalists, result, answer: { 1, 2 }, vote: { 1, 2 } }
+//     ballot: { 1, 2 }, authors: { 1, 2 }, votes: { 1, 2 } (everyone's), tally: { 1, 2 }, finalists,
+//     result, answer: { 1, 2 } (this phone's), vote: { 1, 2 } (this phone's) }
 // Returns { answer(round, text), vote(round, key), stop() }.
 export function joinGame(code, seat, maxPlayers, onState) {
-  const state = { status: 'joining', phase: null, endsAt: 0, game: 0, ballot: {}, authors: {}, finalists: {}, result: null, answer: {}, vote: {} }
-  const tell = () => onState({ ...state, ballot: { ...state.ballot }, authors: { ...state.authors }, answer: { ...state.answer }, vote: { ...state.vote } })
+  const state = { status: 'joining', phase: null, endsAt: 0, game: 0, ballot: {}, authors: {}, votes: {}, tally: {}, finalists: {}, result: null, answer: {}, vote: {} }
+  const tell = () => onState({ ...state, ballot: { ...state.ballot }, authors: { ...state.authors }, votes: { ...state.votes }, tally: { ...state.tally }, answer: { ...state.answer }, vote: { ...state.vote } })
   const stops = []
   let stopped = false
   let online = false
@@ -101,6 +102,8 @@ export function joinGame(code, seat, maxPlayers, onState) {
     for (const round of [1, 2]) {
       watch(`ballot/${round}`, (v) => { state.ballot[round] = v ?? null })
       watch(`authors/${round}`, (v) => { state.authors[round] = v ?? null })
+      watch(`votes/${round}`, (v) => { state.votes[round] = v ?? null }) // everyone's, for the standings
+      watch(`tally/${round}`, (v) => { state.tally[round] = v ?? null })
       watch(`answers/${round}/${seat}`, (v) => { state.answer[round] = v?.text ?? null })
       watch(`votes/${round}/${seat}`, (v) => { state.vote[round] = v ?? null })
     }
