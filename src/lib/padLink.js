@@ -21,10 +21,9 @@
 //     mute           true to ignore the audience pads
 //     hints, hintNow false to switch the "look this way" prompt off; a count that shows it now
 //     story          { on, at, phone, started, skip, chapters: [{ title, spot, deck }] }
-import { getApp } from 'firebase/app'
+import { getApps, initializeApp } from 'firebase/app'
 import { getDatabase, onDisconnect, onValue, ref, remove, serverTimestamp, set, update } from 'firebase/database'
-import './firebase.js'
-import { databaseURL } from '../data/firebase.js'
+import { databaseURL, firebaseConfig } from '../data/firebase.js'
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O or 1/I to mix up
 export const CODE_LENGTH = 5
@@ -32,7 +31,9 @@ export const ADMIN = 'admin'
 export const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(CODE_LENGTH)), (n) => ALPHABET[n % ALPHABET.length]).join('')
 export const cleanCode = (text) => (text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH)
 
-const db = getDatabase(getApp(), databaseURL)
+// Nobody signs in here, so this starts Firebase without the sign-in parts (lib/firebase.js adds
+// those, on the pages that need them, to the same app).
+const db = getDatabase(getApps()[0] ?? initializeApp(firebaseConfig), databaseURL)
 const at = (code, path = '') => ref(db, `pads/${code}${path && `/${path}`}`)
 
 // This phone's seat: a random ID kept in its browser, so a refresh comes back as the same player.

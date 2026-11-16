@@ -40,10 +40,15 @@ function typed(lines, ms) {
   const cursor = out.findIndex((line) => line.shown.length < line.value.length)
   return { lines: out, cursor, done: cursor === -1 }
 }
+const BOTS = ['demobot00001', 'demobot00002'] // demo mode's two stand-in players
+const between = (low, high) => low + Math.random() * (high - low)
 
 // /game/join: the big screen for ALIBI.EXE, and the referee. It opens the room, runs each step's
 // timer, shuffles the answers, counts the votes, makes the cut and names the winner
 // (lib/gameTally.js); phones (/game/play) only send their own answer and vote.
+//
+// /game/join?demo=1 is demo mode, for trying the game on one device: a phone is shown beside the
+// big screen, and two bots join, answer and vote so there is someone to play against.
 export default function GameScreen() {
   const [code] = useState(newCode)
   const [params] = useSearchParams()
@@ -52,6 +57,10 @@ export default function GameScreen() {
   const navigate = useNavigate()
   const [veil, setVeil] = useState(false) // fades the screen to black on the way out
   const reveal = useRef({ shown: false, at: 0, sent: false })
+  const demo = params.has('demo')
+  const [side, setSide] = useState('screen') // demo mode on a narrow display: which half is showing
+  const holder = useRef(null) // the space the 4:3 stage is fitted into
+  const bots = useRef({ phase: null, wait: {} }) // when each bot acts in the current step
   const [g, setG] = useState(undefined) // everything under games/{code}; undefined until it loads
   const [failed, setFailed] = useState(false)
   const [scale, setScale] = useState(1)
@@ -84,12 +93,13 @@ export default function GameScreen() {
 
   // Keep the 4:3 stage as big as the display allows.
   useEffect(() => {
-    const fit = () => setScale(Math.min(window.innerWidth / WIDTH, window.innerHeight / HEIGHT))
+    const fit = () => { if (holder.current) setScale(Math.min(holder.current.clientWidth / WIDTH, holder.current.clientHeight / HEIGHT) || 1) }
     fit()
-    window.addEventListener('resize', fit)
+    const sizes = new ResizeObserver(fit)
+    sizes.observe(holder.current)
     const key = (e) => { if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey) toggleFull() }
     window.addEventListener('keydown', key)
-    return () => { window.removeEventListener('resize', fit); window.removeEventListener('keydown', key) }
+    return () => { sizes.disconnect(); window.removeEventListener('keydown', key) }
   }, [])
 
   // --- The referee: four times a second, see whether the current step is over ---
@@ -134,6 +144,26 @@ export default function GameScreen() {
       const timeUp = room.endsAt && now() >= room.endsAt
       const players = Object.keys(room.players ?? {})
       const round = room.phase?.endsWith('2') ? 2 : 1
+
+      // Demo mode: the two bots join, and a few seconds into each step they answer or vote.
+      if (demo) {
+        const missing = BOTS.filter((bot) => !room.players?.[bot])
+        if (missing.length) return void change(Object.fromEntries(missing.map((bot) => [`players/${bot}`, true])))
+        if (bots.current.phase !== room.phase) bots.current = { phase: room.phase, wait: Object.fromEntries(BOTS.map((bot) => [bot, between(2500, 7000)])) }
+        const waited = now() - began.current.at
+        for (const [i, bot] of BOTS.entries()) {
+          if (waited < bots.current.wait[bot]) continue
+          const writing = room.phase === 'write1' || (room.phase === 'write2' && room.finalists?.[bot])
+          if (writing && !room.answers?.[round]?.[bot]) {
+            const lines = game.demo.lines[round]
+            return void change({ [`answers/${round}/${bot}`]: { text: lines[(Math.floor(Math.random() * lines.length / 2) * 2 + i) % lines.length], at: now() } })
+          }
+          if ((room.phase === 'vote1' || room.phase === 'vote2') && !room.votes?.[round]?.[bot]) {
+            const options = Object.keys(room.ballot?.[round] ?? {}).filter((key) => room.authors?.[round]?.[key] !== bot)
+            if (options.length) return void change({ [`votes/${round}/${bot}`]: options[Math.floor(Math.random() * options.length)] })
+          }
+        }
+      }
 
       // Show mode: after the verdict comes the police report, then the move to the experience.
       if (showMode) {
@@ -184,7 +214,7 @@ export default function GameScreen() {
     }
     const timer = setInterval(referee, 250)
     return () => clearInterval(timer)
-  }, [])
+  }, [demo])
 
   // One sound: a ding when the verdict comes up.
   const phase = g?.phase
@@ -251,7 +281,16 @@ export default function GameScreen() {
   )
 
   return (
-    <main className="fixed inset-0 flex items-center justify-center overflow-hidden bg-black">
+    <main className="fixed inset-0 flex flex-col overflow-hidden bg-black md:flex-row">
+      {/* Demo mode on a narrow display shows one half at a time. */}
+      {demo && (
+        <div className="w9 flex shrink-0 gap-[3px] bg-[#c0c0c0] p-[3px] text-[15px] md:hidden">
+          {[['screen', game.demo.screen], ['phone', game.demo.phone]].map(([name, label]) => (
+            <button key={name} type="button" className="w9-btn h-11 flex-1 font-bold" aria-pressed={side === name} onClick={() => setSide(name)}>{label}</button>
+          ))}
+        </div>
+      )}
+      <div ref={holder} className={`min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden ${demo && side !== 'screen' ? 'hidden md:flex' : 'flex'}`}>
       <div className="w9 relative shrink-0 select-none overflow-hidden bg-[#008080] text-[16px]" style={{ width: WIDTH, height: HEIGHT, transform: `scale(${scale})` }}>
         <div className="absolute inset-x-0 bottom-[36px] top-0 flex items-center justify-center gap-4 p-5">
           {failed && <Window title={game.name} className="w-[420px]"><p className="flex items-center gap-4"><BoxIcon kind="error" />{copy.failed}</p></Window>}
@@ -270,6 +309,9 @@ export default function GameScreen() {
                   <p className="mt-4 text-[15px]">{copy.code}</p>
                   <p className="w9-sunken mt-1 bg-white px-3 py-1 text-center text-[52px] font-bold leading-none tracking-[0.25em]">{code}</p>
                   <WinButton className="mt-5 w-full text-[20px] font-bold" onClick={start} disabled={players.length < game.minPlayers}>{copy.start}</WinButton>
+                  {demo
+                    ? <p className="mt-3 text-[14px] leading-snug"><b>{game.demo.label}.</b> {game.demo.hint}</p>
+                    : <a href="/game/join?demo=1" className="mt-3 inline-block text-[14px] text-[#000080] underline">{game.demo.open}</a>}
                 </div>
               </div>
             </Window>
@@ -362,6 +404,14 @@ export default function GameScreen() {
           <p className="w9-well flex h-full shrink-0 items-center px-[10px] tabular-nums">{clock}</p>
         </footer>
       </div>
+      </div>
+      {/* Demo mode: your phone, beside the big screen. */}
+      {demo && (
+        <aside className={`w9 min-h-0 shrink-0 flex-col bg-[#c0c0c0] p-[3px] text-[15px] md:flex md:w-[380px] ${side === 'phone' ? 'flex flex-1' : 'hidden'}`}>
+          <p className="w9-title hidden shrink-0 px-[6px] py-[2px] md:block">{game.demo.phone}</p>
+          <iframe title={game.demo.phone} src={`/game/play?c=${code}`} className="min-h-0 w-full flex-1 border-0" />
+        </aside>
+      )}
       <div className={`pointer-events-none absolute inset-0 bg-black transition-opacity duration-700 motion-reduce:transition-none ${veil ? 'opacity-100' : 'opacity-0'}`} />
     </main>
   )
