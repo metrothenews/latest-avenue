@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BoxIcon, Progress, Window, WinButton } from '../../components/game/Win.jsx'
 import { cleanCode, CODE_LENGTH, joinGame, mySeat, now } from '../../lib/gameLink.js'
 import { countVotes, ranked } from '../../lib/gameTally.js'
@@ -17,6 +17,8 @@ export default function GamePlay() {
   const [typed, setTyped] = useState('')
   const [s, setS] = useState(null) // the game as this phone sees it (lib/gameLink.js → joinGame)
   const [text, setText] = useState('')
+  const [name, setName] = useState('')
+  const navigate = useNavigate()
   const [, setBeat] = useState(0)
   const link = useRef(null)
 
@@ -36,6 +38,12 @@ export default function GamePlay() {
     document.addEventListener('visibilitychange', back)
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', back); lock?.release().catch(() => {}) }
   }, [])
+
+  // Show mode: when the game is over, this phone follows the room to the experience as the same player.
+  const next = s?.next
+  useEffect(() => {
+    if (next?.pad) navigate(`/experience/controller?c=${next.pad}`, { replace: true, state: { seat, name: s?.name ?? '' } })
+  }, [next?.pad]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A fresh text box for each round and each new game.
   const phase = s?.phase
@@ -69,6 +77,24 @@ export default function GamePlay() {
     body = message(copy.joining)
   } else if (s.status !== 'in') {
     body = <>{message({ unknown: copy.unknown, full: copy.full, over: copy.over, failed: copy.lost }[s.status], 'error')}<WinButton className="mt-[1em] w-full" onClick={leave}>{copy.tryCode}</WinButton></>
+  } else if (s.showMode && !s.name) {
+    // Show mode keeps a name on file; it is shown to nobody unless this player wins.
+    body = (
+      <form onSubmit={(e) => { e.preventDefault(); const clean = tidy(name); if (clean) link.current?.name(clean).catch(() => {}) }}>
+        <label htmlFor="game-name" className="block font-bold">{game.show.askName}</label>
+        <input
+          id="game-name" value={name} onChange={(e) => setName(e.target.value.slice(0, game.show.nameLength))} maxLength={game.show.nameLength}
+          autoComplete="given-name" autoCapitalize="words" enterKeyHint="done"
+          className="w9-sunken mt-[0.6em] block w-full select-text rounded-none bg-white px-[0.5em] py-[0.4em] outline-none"
+        />
+        <WinButton type="submit" disabled={!tidy(name)} className="mt-[0.8em] w-full font-bold">{game.show.nameOk}</WinButton>
+      </form>
+    )
+  } else if (phase === 'report') {
+    title = game.show.title
+    body = s.revealed
+      ? <><p>{game.show.suspect}</p><p className="mt-[0.2em] break-words text-[2em] font-bold leading-tight">{s.revealed}</p></>
+      : message(s.result?.winner === seat ? game.show.stay : game.show.watch)
   } else if (phase === 'lobby' || !phase) {
     body = message(copy.inLobby)
   } else if (phase === 'write1' || phase === 'write2') {

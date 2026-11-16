@@ -58,6 +58,25 @@ export const experience = {
     { id: 'desk-3', body: { left: 16019, right: 16749, top: 3810, bottom: 4445 }, screen: { left: 16110, right: 16660, top: 3890, bottom: 4302 } },
     { id: 'desk-4', body: { left: 3840, right: 4352, top: 3862, bottom: 4300 }, screen: { left: 3910, right: 4268, top: 3959, bottom: 4227 } },
   ],
+  // The desk phone (to the left of Desk 1). A story can begin with it: the player has to find it
+  // and press A, then a recording plays (for now a waveform is shown and nothing is heard) before
+  // the first chapter's monitor can be opened.
+  phone: { id: 'phone', body: { left: 6835, right: 7190, top: 4300, bottom: 4515 } },
+  callSeconds: 30, // how long the phone step lasts until a real recording sets it
+  callAudio: null, // the recording's address, once there is one
+  hintSeconds: 30, // how long the player can go without finding what's next before the prompt appears
+  // Arriving from the party game (/game/join?then=experience): the game's last screen is shown on
+  // this monitor, held for a moment, then the view pulls back into the room.
+  handoff: { spot: 'desk-1', holdSeconds: 1.8, title: 'Incident Report' },
+  // What a phone without the controls can send: nudges (shown at the edges of the big screen)
+  // and reactions (which drift up its side). They suggest; they never control.
+  crowd: {
+    nudges: [{ id: 'u', label: 'Look up' }, { id: 'l', label: 'Look left' }, { id: 'r', label: 'Look right' }, { id: 'd', label: 'Look down' }],
+    reactions: [{ id: 'laugh', label: 'Laugh' }, { id: 'gasp', label: 'Gasp' }, { id: 'boo', label: 'Boo' }, { id: 'object', label: 'Objection' }],
+    everyMs: 900, // a phone can send one this often
+    audience: 'Audience',
+    muted: 'The host has paused the audience',
+  },
   lockMargin: 2, // degrees: how far past a monitor's edge you can look and still be locked on to it
   closeIn: 1.22, // how much of the monitor shows around the slide when closed in (1 = the slide fills the view)
   closeInTime: 0.7, // seconds for the view to close in or pull back
@@ -161,6 +180,29 @@ export const experience = {
     endChapter: 'End chapter (hand back)',
     back: 'Previous chapter',
     skip: 'Skip chapter',
+    connectText2: 'Or type the 4-letter code of a party game opened in show mode, to follow it into the experience.',
+    noGame: 'No game with that code.',
+    gameNotShow: "That game wasn't opened in show mode (/game/join?then=experience).",
+    gameOn: (code) => `Following game ${code}. The experience opens when it ends.`,
+    gameTitle: 'Party game',
+    gameText: "Names are shown to nobody unless that player wins. Change any of them here; the winner's is revealed on the police report.",
+    gamePhase: { lobby: 'In the lobby.', write1: 'Round 1: writing.', vote1: 'Round 1: voting.', cut: 'The top ten.', write2: 'Final round: writing.', vote2: 'Final round: voting.', result: 'The verdict is up.', report: 'The police report is on screen.' },
+    advance: 'Advance (pull back into the room)',
+    winnerIs: 'Winner:',
+    winnerTag: 'Winner',
+    noName: '(no name given)',
+    editName: 'Name',
+    armText: 'Start the story now and it will be waiting when the experience opens.',
+    arm: 'Start the story when the experience opens',
+    armed: 'The story will start when the experience opens.',
+    disarm: 'Cancel',
+    withPhone: 'Begin with the phone (the player finds it, then a recording plays)',
+    waitingPhone: 'Waiting for the player to find the phone.',
+    onCall: (s) => `The recording is playing (${s}s left). Nothing can be opened.`,
+    skipCall: 'Skip the recording',
+    hintNow: 'Show the prompt now',
+    mute: 'Pause the audience',
+    hints: 'Prompt a stuck player after 30 seconds',
     monitors: { 'desk-1': 'Desk 1 (spreadsheet)', 'desk-2': 'Desk 2', 'desk-3': 'Desk 3 (TV)', 'desk-4': 'Desk 4' },
   },
   hint: 'Drag, or use the arrow keys, to look around',

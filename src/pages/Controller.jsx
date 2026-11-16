@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { experience } from '../data/experience.js'
 
 const copy = experience.controller
+const crowd = experience.crowd
+// The audience's reactions, as line drawings on a 32 x 32 grid (the same ones the big screen shows).
+const REACTIONS = {
+  laugh: '<circle cx="16" cy="16" r="12"/><path d="M10 17a6 6 0 0 0 12 0zM11 12h2M19 12h2"/>',
+  gasp: '<circle cx="16" cy="16" r="12"/><circle cx="16" cy="20" r="3"/><path d="M11 12h1M20 12h1"/>',
+  boo: '<path d="M9 5v13h9l4 8c2 0 3-1 3-3l-1-5h-2V5z"/><path d="M5 5v13"/>',
+  object: '<path d="M16 4l13 23H3z"/><path d="M16 12v8M16 23.5v.5"/>',
+}
 const LINE = 2.5 // px: how thick the lines are
 const line = { fill: 'none', stroke: 'white', strokeWidth: LINE, strokeLinecap: 'round', strokeLinejoin: 'round' }
 
@@ -11,6 +19,8 @@ const line = { fill: 'none', stroke: 'white', strokeWidth: LINE, strokeLinecap: 
 // same code (lib/padLink.js links the two).
 export default function Controller() {
   const [params, setParams] = useSearchParams()
+  const came = useLocation().state // from the party game: { seat, name }, so this is the same player
+  const [sentAt, setSentAt] = useState(0) // when the audience pad last sent something
   const code = (params.get('c') ?? '').toUpperCase()
   const [typed, setTyped] = useState('')
   // link: idle | connecting | connected | unknown | removed | failed. driving: this phone has the
@@ -29,7 +39,7 @@ export default function Controller() {
     setState({ link: 'connecting', driving: false, presenting: false })
     import('../lib/padLink.js').then(({ joinPad, mySeat }) => {
       if (!live) return
-      joined = joinPad(code, mySeat(), (s) => live && setState(s))
+      joined = joinPad(code, came?.seat ?? mySeat(), (s) => live && setState(s), came?.name ?? '')
       link.current = joined
     }, () => live && setState({ link: 'failed', driving: false, presenting: false }))
     return () => { live = false; joined?.stop(); link.current = null }
@@ -88,7 +98,7 @@ export default function Controller() {
   })
 
   const status = state.link === 'connected'
-    ? (state.driving ? copy.yourTurn : state.presenting ? copy.presenterHas : copy.waitTurn)
+    ? (state.driving ? copy.yourTurn : state.muted ? crowd.muted : crowd.audience)
     : { connecting: copy.connecting, unknown: copy.unknown, removed: copy.removed, failed: copy.lost }[state.link]
   const ready = state.link === 'connected' && state.driving
 
@@ -111,6 +121,39 @@ export default function Controller() {
             <p role="status">{status}<span className="ml-3 text-white/35">{code}</span></p>
             <button type="button" className="touch-auto py-3 text-white/45" onClick={() => setParams({}, { replace: true })}>{copy.change}</button>
           </div>
+          {state.link === 'connected' && !state.driving ? (
+            // Without the controls this phone is in the audience: it can nudge and react. What it
+            // sends shows on the big screen as a suggestion; it never moves anything.
+            <div className={`flex min-h-0 flex-1 flex-wrap items-center justify-around gap-x-8 gap-y-4 px-[6vw] pb-[max(1.5rem,env(safe-area-inset-bottom))] ${state.muted ? 'opacity-35' : ''}`}>
+              <div className="grid shrink-0 grid-cols-3 gap-2" role="group" aria-label={crowd.audience}>
+                {crowd.nudges.map((n) => (
+                  <button
+                    key={n.id} type="button" aria-label={n.label} disabled={state.muted || Date.now() - sentAt < crowd.everyMs}
+                    onClick={() => { link.current?.crowd(n.id); navigator.vibrate?.(8); const at = Date.now(); setSentAt(at); setTimeout(() => setSentAt((t) => (t === at ? 0 : t)), crowd.everyMs) }}
+                    className={`h-[4.5rem] w-[4.5rem] touch-auto disabled:opacity-40 ${{ u: 'col-start-2', l: 'col-start-1 row-start-2', r: 'col-start-3 row-start-2', d: 'col-start-2 row-start-3' }[n.id]}`}
+                  >
+                    <svg viewBox="-50 -50 100 100" className="h-full w-full [&_*]:[vector-effect:non-scaling-stroke]" aria-hidden="true">
+                      <rect x="-44" y="-44" width="88" height="88" rx="16" {...line} strokeOpacity="0.55" />
+                      <path d={{ u: 'M-20 12l20 -24l20 24', d: 'M-20 -12l20 24l20 -24', l: 'M12 -20l-24 20l24 20', r: 'M-12 -20l24 20l-24 20' }[n.id]} {...line} />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+              <div className="grid shrink-0 grid-cols-2 gap-2">
+                {crowd.reactions.map((r) => (
+                  <button
+                    key={r.id} type="button" aria-label={r.label} disabled={state.muted || Date.now() - sentAt < crowd.everyMs}
+                    onClick={() => { link.current?.crowd(r.id); navigator.vibrate?.(8); const at = Date.now(); setSentAt(at); setTimeout(() => setSentAt((t) => (t === at ? 0 : t)), crowd.everyMs) }}
+                    className="h-[4.5rem] w-[4.5rem] touch-auto disabled:opacity-40"
+                  >
+                    <svg viewBox="-4 -4 40 40" className="h-full w-full [&_*]:[vector-effect:non-scaling-stroke]" aria-hidden="true">
+                      <g {...line} dangerouslySetInnerHTML={{ __html: REACTIONS[r.id] }} />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
           <div className={`flex min-h-0 flex-1 items-center justify-between gap-4 px-[6vw] pb-[max(1.5rem,env(safe-area-inset-bottom))] ${ready ? '' : 'opacity-35'}`}>
             {/* The stick. */}
             <div
@@ -138,6 +181,7 @@ export default function Controller() {
               ))}
             </div>
           </div>
+          )}
         </>
       )}
     </main>

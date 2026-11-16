@@ -7,6 +7,11 @@
 //   endsAt          when the current step's timer runs out (the database's clock, in ms)
 //   game            a counter that goes up with each new game in the room
 //   players/{seat}  true while that phone is connected
+//   names/{seat}    the name that player typed (shown nowhere until a winner is revealed)
+//   pad             show mode only: the /experience pairing code the room moves to afterwards
+//   revealed        show mode: the winner's name, once the police report has typed it
+//   advance         show mode: true once the admin has pressed Advance on the reveal
+//   next            show mode: { pad, winner, name }: written when it is time to move on
 //   answers/{round}/{seat}   { text, at }
 //   ballot/{round}/{key}     the round's answers, shuffled, keyed n1, n2, ... (no author)
 //   authors/{round}/{key}    the seat that wrote that answer (to refuse votes for yourself)
@@ -60,15 +65,22 @@ export function openGame(code, onGame, onError) {
   }
 }
 
+// --- The admin page (following a game in show mode) ---
+// onGame(everything under games/{code}, or null). Returns { change(fields), stop() }.
+export function followGame(code, onGame) {
+  const stop = onValue(at(code), (snap) => onGame(snap.val()), () => onGame(null))
+  return { change: (fields) => update(at(code), fields).catch(() => {}), stop }
+}
+
 // --- A phone ---
 
 // Joins a room. onState gets, whenever anything changes:
 //   { status: 'joining' | 'in' | 'unknown' | 'full' | 'over' | 'failed', phase, endsAt, game,
-//     ballot: { 1, 2 }, authors: { 1, 2 }, votes: { 1, 2 } (everyone's), tally: { 1, 2 }, finalists,
+//     revealed, next, ballot: { 1, 2 }, authors: { 1, 2 }, votes: { 1, 2 } (everyone's), tally: { 1, 2 }, finalists,
 //     result, answer: { 1, 2 } (this phone's), vote: { 1, 2 } (this phone's) }
 // Returns { answer(round, text), vote(round, key), stop() }.
-export function joinGame(code, seat, maxPlayers, onState) {
-  const state = { status: 'joining', phase: null, endsAt: 0, game: 0, ballot: {}, authors: {}, votes: {}, tally: {}, finalists: {}, result: null, answer: {}, vote: {} }
+export function joinGame(code, seat, maxPlayers, onState, name = '') {
+  const state = { status: 'joining', phase: null, endsAt: 0, game: 0, revealed: '', next: null, showMode: false, name: '', ballot: {}, authors: {}, votes: {}, tally: {}, finalists: {}, result: null, answer: {}, vote: {} }
   const tell = () => onState({ ...state, ballot: { ...state.ballot }, authors: { ...state.authors }, votes: { ...state.votes }, tally: { ...state.tally }, answer: { ...state.answer }, vote: { ...state.vote } })
   const stops = []
   let stopped = false
@@ -78,6 +90,7 @@ export function joinGame(code, seat, maxPlayers, onState) {
   function sit() {
     if (stopped || !online || !hosted || state.status === 'full') return
     onDisconnect(at(code, `players/${seat}`)).remove().catch(() => {})
+    if (name) set(at(code, `names/${seat}`), name.slice(0, 20)).catch(() => {})
     set(at(code, `players/${seat}`), true).then(() => { if (!stopped) { state.status = 'in'; tell() } }, () => { state.status = 'failed'; tell() })
   }
   const watch = (path, apply) => stops.push(onValue(at(code, path), (snap) => { apply(snap.val()); tell() }, () => {}))
@@ -99,6 +112,10 @@ export function joinGame(code, seat, maxPlayers, onState) {
     watch('game', (v) => { state.game = Number(v) || 0 })
     watch('finalists', (v) => { state.finalists = v ?? {} })
     watch('result', (v) => { state.result = v })
+    watch('revealed', (v) => { state.revealed = v ?? '' })
+    watch('next', (v) => { state.next = v })
+    watch('pad', (v) => { state.showMode = Boolean(v) })
+    watch(`names/${seat}`, (v) => { state.name = v ?? '' })
     for (const round of [1, 2]) {
       watch(`ballot/${round}`, (v) => { state.ballot[round] = v ?? null })
       watch(`authors/${round}`, (v) => { state.authors[round] = v ?? null })
@@ -111,6 +128,7 @@ export function joinGame(code, seat, maxPlayers, onState) {
 
   return {
     answer: (round, text) => set(at(code, `answers/${round}/${seat}`), { text, at: serverTimestamp() }),
+    name: (text) => set(at(code, `names/${seat}`), text.slice(0, 20)),
     vote: (round, key) => set(at(code, `votes/${round}/${seat}`), key),
     stop() {
       stopped = true
