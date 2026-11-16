@@ -212,6 +212,8 @@ Defined in `src/App.jsx`.
 | `/global` | Global (outline guessing game) | SiteLayout | **no** (hidden; reached by typing the URL) |
 | `/experience` | Experience: a 360° view you turn left and right in | none (full screen) | **no** (hidden; reached by typing the URL) |
 | `/experience/controller` | A phone game controller that steers `/experience` on another screen | none (full screen) | QR code / address shown on `/experience` |
+| `/game/join` | ALIBI.EXE: the big screen (TV) for the party game | none (full screen, locked to 4:3) | **no** (hidden) |
+| `/game/play` | ALIBI.EXE: a phone in the game | none (full screen) | the QR code on `/game/join` |
 | `/login` | Login (Google sign-in) | AuthLayout | header "login" button |
 | `/admin` | Dashboard (owner only) | AdminLayout | **no** |
 | `/admin/drive` | Drive browser (owner only) | AdminLayout | admin header |
@@ -324,6 +326,26 @@ To add an artist, append an object to `artists`. They appear in the /login side-
 - **Preparing it:** `npm run pano -- path/to/panorama.png` (`scripts/pano.mjs`, uses the dev-only `sharp` package) writes `public/pano/`: a small `preview.webp` of the whole thing, the panorama at full, half and quarter size cut into 2048px tiles (`<width>/<row>_<col>.webp`), and `manifest.json`. The page shows the preview at once, then downloads only the tiles being faced, at the size the screen needs. Commit `public/pano/` and deploy. The source render is not copied into the site.
 - **Currently** `public/pano/` holds the full-size office render (16384 × 8192, about 11 MB of tiles in all).
 - **Data use:** a full turn at the largest size downloads several MB. Firebase's free plan allows about 360 MB of downloads a day.
+
+---
+
+## ALIBI.EXE (the /game party game)
+
+A two-round party game for 2 to 40 phones and one big screen, in the look of a late-90s desktop (grey bevelled windows, navy title bars; styles are the `.w9-*` classes in `src/index.css`, all drawn here with no borrowed artwork). A game takes about two minutes.
+
+- **`/game/join` is the big screen (`src/pages/game/GameScreen.jsx`).** It shows a QR code and a 4-letter code. It is drawn on a fixed 1024 × 768 stage that is scaled as one piece to fit the display, so it is always 4:3 (black bars on a widescreen). **F** or the taskbar button is full screen. Each player is a button on the taskbar; the clock shows the countdown.
+- **`/game/play` is a phone (`src/pages/game/GamePlay.jsx`).** Scanning the QR opens it with the code filled in; typing the address asks for the code. One window at a time. Nobody enters a name.
+- **Round 1:** everyone answers "You're a murder suspect. What's your best horrible alibi?" (40 characters, 30 seconds), then everyone votes for the funniest (30 seconds). The big screen shows a live leaderboard of the top ten answers (rank, a bar, and the count with "votes" under it); every answer is anonymous. The top 10 go through and each phone is told privately whether it is in the final or on the jury.
+- **Round 2:** only the ten finalists answer "You're pulled over for a DUI. What's the worst possible thing you could say?"; everyone votes (20 seconds) while the big screen shows the same live leaderboard. The winner is shown in an error-style box; the winner's phone says GUILTY. **OK** goes back to the lobby for another game with the same room.
+- **On the phones:** the voting list holds every answer (scrollable). Once a phone has voted it shows the whole live leaderboard, all answers with their counts, to scroll through; the big screen only shows the top ten (`leaders` in `src/data/game.js`).
+- **Rules:** writing and voting end early once everyone has acted. With 10 or fewer answers everyone goes through. No answer in round 1 means no place in the final, but you still vote.
+- **Nobody can vote for their own answer:** the phone doesn't offer it, the database rules refuse it, and the count ignores it.
+- **Ties (`src/lib/gameTally.js`):** when voting closes, a tie across the cut line (round 1) or for first place (round 2) is settled by picking at random among the tied answers and adding one unlabelled vote to each one picked. So the totals on screen can be a little higher than the number of voters. A 2-player game always ends 1–1, so it always exercises this.
+- **The big screen is the referee.** It runs the timers, shuffles the answers, counts, makes the cut and names the winner; phones only send their own answer and vote. Closing the big screen's page ends the game for everyone.
+- **Live link (`src/lib/gameLink.js`):** the Realtime Database, like the controller, under `games/{code}`: `host`, `phase`, `endsAt`, `game`, `players/{seat}`, `answers/{round}/{seat}`, `ballot/{round}/{key}`, `authors/{round}/{key}`, `votes/{round}/{seat}`, `tally/{round}/{key}`, `finalists/{seat}`, `result`. A "seat" is a random ID kept in the phone's browser, so a refresh comes back as the same player. Answers are anonymous on screen, not secret in the database (nobody signs in).
+- **Rules (`database.rules.json`):** anyone can read and write under a valid 4-letter code, only the known fields with their types and sizes; nothing can be listed. **Deploy with `firebase deploy --only database`.**
+- **Settings and all wording (`src/data/game.js`):** both prompts, the timings, 2 to 40 players, 40 characters, 10 finalists.
+- **Limits:** the Realtime Database's free plan allows 100 devices connected at once, so one full game (41) fits but not two at the same time. There is no filter on what people write.
 
 ---
 
@@ -651,6 +673,7 @@ Sam wants to be able to build an MCP server for the site later (so an AI assista
 | Team messages | `chats/{chatId}/messages` | `src/lib/teamChat.js` | `watchChats`, `watchMessages`, `sendMessage` |
 | Assignments doc | `portal/*` | `src/lib/assignments.js` | `getAssignmentsDoc`, `getDocInfo`, `publishDoc` |
 | Crew list | `crew/{email}` | `src/lib/crew.js` | `listCrew`, `addCrewMember`, `removeCrewMember`, `getCrewMember` |
+| ALIBI.EXE game (Realtime Database) | `games/{code}` | `src/lib/gameLink.js` | `openGame`, `joinGame` |
 | Controller link (Realtime Database, not Firestore) | `pads/{code}` | `src/lib/padLink.js` | `hostPad`, `joinPad` |
 | Note boards, cards, files | `noteBoards`, `…/cards`, `noteFiles`, `…/parts` | `src/lib/note.js` | `createBoard`, `updateBoard`, `setCard`, `patchCards`, `removeCard`, `moveCards`, `setPublic`, `uploadFile`, `loadFile` |
 | Campaign runs | `campaignRuns`, `metaUploads`, `pixelEvents` | `src/lib/campaignRuns.js` | `listRuns`, `saveRun`, `setRunArchived`, `deleteRun` |

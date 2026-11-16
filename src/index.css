@@ -24,6 +24,30 @@ body::before {
 }
 
 @layer components {
+  /* ALIBI.EXE (/game): the look of a late-90s desktop. Grey panels with a bevel made of four
+     thin lines, a navy title bar, plain black text. Drawn here, with no borrowed artwork. */
+  .w9 {
+    font-family: Tahoma, 'MS Sans Serif', Geneva, Verdana, sans-serif;
+    color: #000;
+    -webkit-font-smoothing: none;
+  }
+  .w9-raised {
+    background: #c0c0c0;
+    box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  }
+  .w9-sunken { box-shadow: inset -1px -1px #fff, inset 1px 1px #808080, inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a; }
+  .w9-well { box-shadow: inset -1px -1px #fff, inset 1px 1px #808080; }
+  .w9-title { background: #000080; color: #fff; font-weight: 700; }
+  .w9-btn {
+    background: #c0c0c0;
+    box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  }
+  .w9-btn:active:not(:disabled), .w9-btn[aria-pressed='true'] {
+    box-shadow: inset 1px 1px #0a0a0a, inset -1px -1px #fff, inset 2px 2px #808080, inset -2px -2px #dfdfdf;
+  }
+  .w9-btn:disabled { color: #808080; text-shadow: 1px 1px #fff; }
+  .w9-btn:focus-visible { outline: 1px dotted #000; outline-offset: -5px; }
+
   /* Frosted-glass surface used by cards, panels and modals */
   .glass {
     /* Same recipe as the live site's cards: gray-900 at 30%, gray-700 border at 50% */

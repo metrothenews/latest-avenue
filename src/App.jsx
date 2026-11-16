@@ -33,6 +33,9 @@ const Global = lazy(() => import('./pages/Global.jsx'))
 // The 360° view fills the whole screen, so it sits outside the site layout.
 const Experience = lazy(() => import('./pages/Experience.jsx'))
 const Controller = lazy(() => import('./pages/Controller.jsx'))
+// ALIBI.EXE: the big screen (/game/join) and the phones (/game/play).
+const GameScreen = lazy(() => import('./pages/game/GameScreen.jsx'))
+const GamePlay = lazy(() => import('./pages/game/GamePlay.jsx'))
 
 export default function App() {
   return (
@@ -54,6 +57,8 @@ export default function App() {
           </Route>
           <Route path="/experience" element={<Experience />} />
           <Route path="/experience/controller" element={<Controller />} />
+          <Route path="/game/join" element={<GameScreen />} />
+          <Route path="/game/play" element={<GamePlay />} />
           {/* Owner-only area: Google sign-in, restricted to ownerUid in data/firebase.js. */}
           <Route element={<AuthProvider />}>
             <Route element={<AuthLayout />}>

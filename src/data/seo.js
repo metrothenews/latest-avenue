@@ -21,6 +21,8 @@ export const seo = {
   },
   '/experience': { title: `experience | ${site.name}`, description: `Look around. A 360° view from ${site.name}.`, preview: true },
   '/experience/controller': { title: `controller | ${site.name}`, description: `A phone controller for the ${site.name} experience.` },
+  '/game/join': { title: 'ALIBI.EXE', description: 'A two-round party game for 2 to 40 phones and one big screen.' },
+  '/game/play': { title: 'ALIBI.EXE', description: 'Join the game on your phone.', preview: true },
   '/login': { title: `Sign in | ${site.name}`, description },
   '/admin': { title: `Admin | ${site.name}`, description },
   '/admin/drive': { title: `Drive | ${site.name}`, description },
