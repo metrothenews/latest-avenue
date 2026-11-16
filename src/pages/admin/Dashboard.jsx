@@ -6,6 +6,7 @@ const tools = [
   { to: '/admin/campaigns', title: 'New Meta campaign', text: 'Copy a Meta campaign and add one ad per video from a Drive folder.' },
   { to: '/analytics', title: 'Analytics', text: 'Your Meta Ads spend, reach, clicks and costs at a glance, per day and per campaign.' },
   { to: '/admin/team', title: 'Admin', text: 'Choose who can open the team portal and edit its welcome message.' },
+  { to: '/admin/experience', title: 'Experience', text: 'Run the 360° experience for a room: players, controls and the story.' },
   { to: '/team', title: 'Team', text: 'The team portal as your team sees it: the welcome page and messages.' },
   { to: '/team/note', title: 'Note', text: 'Visual boards for notes, to-dos, PDFs and ideas, shared with the team.' },
 ]

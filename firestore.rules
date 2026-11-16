@@ -65,6 +65,16 @@ service cloud.firestore {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
     }
 
+    // experienceDecks/{deckId}: PDFs for the /experience story, uploaded at /admin/experience and
+    // stored as text in parts. The screen showing them isn't signed in, so anyone can read one by
+    // its ID; only the owner writes or lists (the rule at the top). experienceStory stays owner-only.
+    match /experienceDecks/{deckId} {
+      allow get: if true;
+      match /parts/{part} {
+        allow read: if true;
+      }
+    }
+
     // portal/{doc}: what the team portal shows (e.g. portal/welcome).
     match /portal/{doc} {
       allow get: if isTeam();

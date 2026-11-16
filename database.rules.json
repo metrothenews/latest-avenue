@@ -5,30 +5,61 @@
     "pads": {
       "$code": {
         ".read": true,
-        ".write": true,
         ".validate": "$code.matches(/^[A-Z2-9]{5}$/)",
         "host": {
+          ".write": true,
           ".validate": "newData.isNumber()"
         },
-        "pad": {
-          ".validate": "newData.isBoolean()"
+        "players": {
+          ".write": true,
+          "$seat": {
+            ".validate": "newData.isNumber() && $seat.matches(/^[a-z0-9]{12}$/)"
+          }
         },
-        "input": {
-          "x": {
-            ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+        "inputs": {
+          ".write": true,
+          "$seat": {
+            ".validate": "$seat.matches(/^[a-z0-9]{12}$/)",
+            "x": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+            },
+            "y": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+            },
+            "a": {
+              ".validate": "newData.isNumber()"
+            },
+            "b": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "status": {
+          ".write": true,
+          "viewing": {
+            ".validate": "newData.isBoolean()"
           },
-          "y": {
-            ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+          "spot": {
+            ".validate": "newData.isString() && newData.val().length <= 30"
           },
-          "a": {
+          "locked": {
+            ".validate": "newData.isString() && newData.val().length <= 30"
+          },
+          "page": {
             ".validate": "newData.isNumber()"
           },
-          "b": {
+          "count": {
             ".validate": "newData.isNumber()"
           },
           "$other": {
             ".validate": false
           }
+        },
+        "show": {
+          ".write": "auth != null && auth.uid === 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2'"
         },
         "$other": {
           ".validate": false

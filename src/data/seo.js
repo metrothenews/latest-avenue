@@ -28,6 +28,7 @@ export const seo = {
   '/admin/drive': { title: `Drive | ${site.name}`, description },
   '/admin/campaigns': { title: `New Meta campaign | ${site.name}`, description },
   '/analytics': { title: `Analytics | ${site.name}`, description },
+  '/admin/experience': { title: `Experience admin | ${site.name}`, description },
   '/admin/team': { title: `Team admin | ${site.name}`, description },
   '/team/join': { title: `Join the team | ${site.name}`, description: `Sign up for the ${site.name} team portal.`, preview: true },
   '/team': { title: `Team portal | ${site.name}`, description },
