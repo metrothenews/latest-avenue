@@ -7,6 +7,7 @@ export const game = {
   maxPlayers: 40,
   maxLength: 40, // characters in an answer
   finalists: 10, // how many answers go through to round 2
+  leaders: 10, // how many answers the big screen's live leaderboard shows (phones can scroll all of them)
   // Seconds for each step. Writing and voting end early once everyone who can act has.
   seconds: { write1: 30, vote1: 30, cut: 6, write2: 30, vote2: 20 },
   prompts: {
@@ -32,6 +33,7 @@ export const game = {
     final: 'Final round',
     writing: 'The finalists are writing…',
     votes: (n) => `${n} vote${n === 1 ? '' : 's'}`,
+    voteWord: (n) => (n === 1 ? 'vote' : 'votes'), // under each count
     verdict: 'Guilty',
     noAnswers: 'No alibis filed.',
     again: 'OK',
@@ -56,7 +58,8 @@ export const game = {
     filed: 'Filed. Watch the screen.',
     missed: "Time's up.",
     pick: 'Tap the funniest',
-    voted: 'Vote cast.',
+    voted: 'Vote cast. Standings so far:',
+    yours: 'your vote',
     nothingToVote: 'Nothing to vote on this time.',
     inFinal: "You're in the final.",
     onJury: "You're on the jury.",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { BoxIcon, Progress, Window, WinButton } from '../../components/game/Win.jsx'
 import { cleanCode, CODE_LENGTH, joinGame, mySeat, now } from '../../lib/gameLink.js'
+import { countVotes, ranked } from '../../lib/gameTally.js'
 import { game } from '../../data/game.js'
 
 const copy = game.play
@@ -96,7 +97,27 @@ export default function GamePlay() {
   } else if (phase === 'vote1' || phase === 'vote2') {
     title = game.rounds[round]
     const options = Object.entries(s.ballot[round] ?? {}).filter(([key]) => s.authors[round]?.[key] !== seat).sort((a, b) => Number(a[0].slice(1)) - Number(b[0].slice(1)))
-    if (s.vote[round]) body = <>{message(copy.voted)}<p className="w9-sunken mt-[0.8em] break-words bg-white px-[0.6em] py-[0.4em]">{s.ballot[round]?.[s.vote[round]]}</p></>
+    if (s.vote[round]) {
+      // After voting: the whole leaderboard, live, to scroll through (the big screen shows the top few).
+      const counts = s.tally[round] ?? countVotes(s.ballot[round], s.authors[round], s.votes[round])
+      body = (
+        <>
+          <p className="font-bold">{copy.voted}</p>
+          <ol className="w9-sunken mt-[0.6em] bg-white">
+            {ranked(counts).map((key, i) => (
+              <li key={key} className={`flex items-center gap-[0.6em] px-[0.5em] py-[0.35em] ${i % 2 ? 'bg-[#f0f0f0]' : ''}`}>
+                <span className="w-[1.4em] shrink-0 text-right tabular-nums text-[#808080]">{i + 1}</span>
+                <span className="min-w-0 flex-1 leading-snug [overflow-wrap:anywhere]">{s.ballot[round][key]}{key === s.vote[round] && <span className="ml-[0.4em] whitespace-nowrap text-[0.8em] text-[#000080]">({copy.yours})</span>}</span>
+                <span className="w-[2.6em] shrink-0 text-center leading-none">
+                  <span className="block font-bold tabular-nums">{counts[key]}</span>
+                  <span className="block text-[0.65em]">{game.screen.voteWord(counts[key])}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )
+    }
     else if (!options.length) body = message(copy.nothingToVote)
     else {
       body = (

@@ -158,18 +158,13 @@ export default function GameScreen() {
   const live = g?.tally?.[round] ?? countVotes(ballot, g?.authors?.[round], g?.votes?.[round])
   const keys = Object.keys(ballot).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
   const order = ranked(live)
-  // Round 1's answers that are (or would be) through: the best `finalists` of them, once any votes are in.
-  const leading = new Set(g?.finalists
-    ? keys.filter((key) => g.finalists[g.authors?.[1]?.[key]])
-    : order.slice(0, game.finalists).filter((key) => live[key] > 0))
+  const top = order.slice(0, game.leaders) // the leaderboard
   const votesIn = Object.keys(g?.votes?.[round] ?? {}).length
   const filed = Object.keys(g?.answers?.[round] ?? {}).length
   const finalistCount = Object.keys(g?.finalists ?? {}).length
   const through = ranked(g?.tally?.[1] ?? {}).filter((key) => g?.finalists?.[g.authors?.[1]?.[key]])
   const clock = g?.endsAt && phase !== 'result' ? `0:${String(seconds).padStart(2, '0')}` : new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
-  // The round 1 grid: its shape depends on how many answers there are.
-  const shape = keys.length <= 8 ? { cols: 2, size: 24 } : keys.length <= 18 ? { cols: 3, size: 17 } : { cols: 4, size: 13.5 }
   const most = Math.max(1, ...Object.values(live))
 
   const finalistsList = (
@@ -177,7 +172,7 @@ export default function GameScreen() {
       {through.map((key) => (
         <li key={key} className="flex items-baseline justify-between gap-3 px-[6px] py-[3px] text-[17px] leading-tight">
           <span className="min-w-0 break-words">{g.ballot[1][key]}</span>
-          <span className="shrink-0 tabular-nums text-[#404040]">{g.tally[1][key]}</span>
+          <span className="shrink-0 tabular-nums text-[#404040]">{copy.votes(g.tally[1][key])}</span>
         </li>
       ))}
     </ol>
@@ -221,17 +216,25 @@ export default function GameScreen() {
             </>
           )}
 
-          {!failed && phase === 'vote1' && (
-            <Window title={copy.alibis} className="h-full w-full" bodyClass="flex flex-col p-[4px]" menu={['File', 'Edit', 'View', 'Help']} status={[copy.objects(keys.length), copy.votesIn(votesIn, players.length), clock]}>
-              <p className="w9-raised shrink-0 px-[8px] py-[3px] text-[15px]">{game.prompts[1]}</p>
-              <ol className="w9-sunken mt-[2px] grid min-h-0 flex-1 auto-rows-fr gap-x-[6px] bg-white p-[6px]" style={{ gridTemplateColumns: `repeat(${shape.cols}, minmax(0, 1fr))`, fontSize: shape.size }}>
-                {keys.map((key) => (
-                  <li key={key} className={`flex min-h-0 items-center gap-[0.5em] overflow-hidden px-[0.4em] leading-[1.15] ${leading.has(key) ? 'bg-[#000080] text-white' : ''}`}>
-                    <span className={`w-[1.5em] shrink-0 text-right tabular-nums ${leading.has(key) ? 'text-white/70' : 'text-[#808080]'}`}>{key.slice(1)}</span>
-                    <span className="line-clamp-3 min-w-0 flex-1 [overflow-wrap:anywhere]">{ballot[key]}</span>
-                    <span className="w-[1.4em] shrink-0 text-right font-bold tabular-nums">{live[key] || ''}</span>
-                  </li>
-                ))}
+          {!failed && (phase === 'vote1' || phase === 'vote2') && (
+            <Window title={round === 1 ? copy.alibis : copy.final} className="h-full w-full" bodyClass="flex flex-col p-[4px]" menu={['File', 'Edit', 'View', 'Help']} status={[copy.objects(keys.length), copy.votesIn(votesIn, players.length), clock]}>
+              <p className="w9-raised shrink-0 px-[8px] py-[3px] text-[15px]">{game.prompts[round]}</p>
+              {/* The leaderboard: the top ten answers, live. The full list is on the phones. */}
+              <ol className="w9-sunken mt-[2px] grid min-h-0 flex-1 bg-white p-[6px]" style={{ gridTemplateRows: `repeat(${game.leaders}, minmax(0, 1fr))` }}>
+                {top.map((key, i) => {
+                  const first = i === 0 && live[key] > 0
+                  return (
+                    <li key={key} className={`flex min-h-0 items-center gap-3 overflow-hidden px-[8px] ${first ? 'bg-[#000080] text-white' : ''}`}>
+                      <span className="w-[1.4em] shrink-0 text-right text-[20px] tabular-nums opacity-60">{i + 1}</span>
+                      <span className="line-clamp-2 min-w-0 flex-[3] text-[23px] leading-tight [overflow-wrap:anywhere]">{ballot[key]}</span>
+                      <span className="flex h-[18px] flex-[2] items-center"><span className={`h-full ${first ? 'bg-white' : 'bg-[#000080]'}`} style={{ width: `${(live[key] / most) * 100}%` }} /></span>
+                      <span className="w-[3em] shrink-0 text-center leading-none">
+                        <span className="block text-[23px] font-bold tabular-nums">{live[key]}</span>
+                        <span className="mt-[2px] block text-[11px]">{copy.voteWord(live[key])}</span>
+                      </span>
+                    </li>
+                  )
+                })}
               </ol>
               <Progress value={share} blocks={48} className="mt-[3px] shrink-0" />
             </Window>
@@ -239,23 +242,6 @@ export default function GameScreen() {
 
           {!failed && phase === 'cut' && (
             <Window title={copy.finalists} className="h-[560px] w-[640px]" bodyClass="p-[6px]" status={[copy.through, copy.objects(through.length)]}>{finalistsList}</Window>
-          )}
-
-          {!failed && phase === 'vote2' && (
-            <Window title={copy.final} className="h-full w-full" bodyClass="flex flex-col p-[4px]" menu={['File', 'Edit', 'View', 'Help']} status={[copy.objects(keys.length), copy.votesIn(votesIn, players.length), clock]}>
-              <p className="w9-raised shrink-0 px-[8px] py-[3px] text-[15px]">{game.prompts[2]}</p>
-              <ol className="w9-sunken mt-[2px] grid min-h-0 flex-1 auto-rows-fr bg-white p-[6px]">
-                {order.map((key, i) => (
-                  <li key={key} className={`flex min-h-0 items-center gap-3 overflow-hidden px-[8px] ${i === 0 && live[key] > 0 ? 'bg-[#000080] text-white' : ''}`}>
-                    <span className="w-[1.4em] shrink-0 text-right text-[20px] tabular-nums opacity-60">{i + 1}</span>
-                    <span className="min-w-0 flex-[3] break-words text-[23px] leading-tight">{ballot[key]}</span>
-                    <span className="flex h-[18px] flex-[2] items-center"><span className={`h-full ${i === 0 && live[key] > 0 ? 'bg-white' : 'bg-[#000080]'}`} style={{ width: `${(live[key] / most) * 100}%` }} /></span>
-                    <span className="w-[1.6em] shrink-0 text-right text-[23px] font-bold tabular-nums">{live[key]}</span>
-                  </li>
-                ))}
-              </ol>
-              <Progress value={share} blocks={48} className="mt-[3px] shrink-0" />
-            </Window>
           )}
 
           {!failed && phase === 'result' && (
