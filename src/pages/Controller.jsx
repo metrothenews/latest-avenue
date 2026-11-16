@@ -13,7 +13,9 @@ export default function Controller() {
   const [params, setParams] = useSearchParams()
   const code = (params.get('c') ?? '').toUpperCase()
   const [typed, setTyped] = useState('')
-  const [state, setState] = useState('idle') // idle | connecting | connected | unknown | failed
+  // link: idle | connecting | connected | unknown | removed | failed. driving: this phone has the
+  // controls. presenting: the presenter has them for now.
+  const [state, setState] = useState({ link: 'idle', driving: false, presenting: false })
   const [knob, setKnob] = useState({ x: 0, y: 0 }) // -1..1, for drawing
   const [pressed, setPressed] = useState({ a: false, x: false })
   const link = useRef(null)
@@ -21,15 +23,15 @@ export default function Controller() {
 
   // Join the screen showing this code.
   useEffect(() => {
-    if (!code) return setState('idle')
+    if (!code) return setState({ link: 'idle', driving: false, presenting: false })
     let live = true
     let joined = null
-    setState('connecting')
-    import('../lib/padLink.js').then(({ joinPad }) => {
+    setState({ link: 'connecting', driving: false, presenting: false })
+    import('../lib/padLink.js').then(({ joinPad, mySeat }) => {
       if (!live) return
-      joined = joinPad(code, (s) => live && setState(s))
+      joined = joinPad(code, mySeat(), (s) => live && setState(s))
       link.current = joined
-    }, () => live && setState('failed'))
+    }, () => live && setState({ link: 'failed', driving: false, presenting: false }))
     return () => { live = false; joined?.stop(); link.current = null }
   }, [code])
 
@@ -85,8 +87,10 @@ export default function Controller() {
     onContextMenu: (e) => e.preventDefault(),
   })
 
-  const status = { connecting: copy.connecting, connected: copy.linked, unknown: copy.unknown, failed: copy.lost }[state]
-  const ready = state === 'connected'
+  const status = state.link === 'connected'
+    ? (state.driving ? copy.yourTurn : state.presenting ? copy.presenterHas : copy.waitTurn)
+    : { connecting: copy.connecting, unknown: copy.unknown, removed: copy.removed, failed: copy.lost }[state.link]
+  const ready = state.link === 'connected' && state.driving
 
   return (
     <main className="fixed inset-0 flex touch-none select-none flex-col overflow-hidden bg-black text-white [-webkit-touch-callout:none]">

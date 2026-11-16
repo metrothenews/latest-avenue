@@ -2,9 +2,10 @@
 // back and forth is instant). Uses pdf.js, loaded only when a slideshow is first needed.
 import { loadPdfjs } from './pdf.js'
 
-export function openSlides(url, size = 1600) {
+// `source` is a PDF's address, or its bytes (or a promise of them).
+export function openSlides(source, size = 1600) {
   const pages = new Map() // page number → Promise<canvas>
-  const doc = loadPdfjs().then((pdfjs) => pdfjs.getDocument({ url }).promise)
+  const doc = Promise.all([loadPdfjs(), source]).then(([pdfjs, src]) => pdfjs.getDocument(typeof src === 'string' ? { url: src } : { data: src }).promise)
   const first = doc.then((d) => d.getPage(1)).then((page) => page.getViewport({ scale: 1 }))
 
   function page(number) {

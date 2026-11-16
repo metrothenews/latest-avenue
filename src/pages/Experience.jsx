@@ -174,19 +174,54 @@ export default function Experience() {
 
     // --- The computers: lock on, close in, slides ---
     const spots = copy.computers.map((c) => ({ id: c.id, body: centre(c.body, copy.panoWidth), ring: outline(c.body, copy.panoWidth, 26), screen: c.screen }))
-    const show = { on: false, spot: null, page: 1, count: 0, ratio: 4 / 3, deck: null, shown: 0, speed: [0, 0, 0] } // `spot` is the one locked on to
+    const show = { on: false, spot: null, page: 1, count: 0, ratio: 4 / 3, deck: null, shown: 0, speed: [0, 0, 0], key: 'default', source: copy.slides } // `spot` is the one locked on to
+    const decks = new Map() // each PDF that has been opened: key → { deck, page, count, ratio }
+    let room = null // everything the controller link knows: players, who has the controls, the story
+    let padLib = null // lib/padLink.js, once a controller code has been shown
     let lockedOn = null
-    const pad = { x: 0, y: 0, armed: true } // the phone controller's stick, -1..1 each way
+    const pad = { x: 0, y: 0, armed: true, from: null } // the phone controller's stick, -1..1 each way
     let padHost = null // stops listening for a controller
     let gone = false
 
+    // The story (run from /admin/experience): while it is on, only the current chapter's monitor
+    // can be opened, and it shows that chapter's PDF.
+    const story = () => (room?.show?.story?.on ? room.show.story : null)
+    const chapter = () => { const st = story(); return st ? st.chapters?.[st.at] ?? null : null }
+
+    // Switches which PDF the monitors show, remembering the slide each one was on.
+    function useDeck(key, source) {
+      if (show.key === key) return
+      decks.set(show.key, { deck: show.deck, page: show.page, count: show.count, ratio: show.ratio })
+      const next = decks.get(key) ?? { deck: null, page: 1, count: 0, ratio: 4 / 3 }
+      Object.assign(show, next, { key, source, shown: 0 })
+      const stage = pano.stage.slide
+      if (stage) { for (const t of [stage.from, stage.to]) if (t) pano.dropTexture(t); pano.stage.slide = null }
+      setSlide({ page: show.page, count: show.count })
+    }
     function deck() {
       if (!show.deck) {
-        show.deck = openSlides(copy.slides)
-        show.deck.info.then(({ count, ratio }) => { show.count = count; show.ratio = ratio; setSlide({ page: show.page, count }) }, () => {})
-        show.deck.page(1).catch(() => {})
+        const key = show.key
+        const opened = (show.deck = openSlides(typeof show.source === 'function' ? show.source() : show.source))
+        opened.info.then(({ count, ratio }) => {
+          if (show.key !== key) return
+          show.count = count
+          show.ratio = ratio
+          setSlide({ page: show.page, count })
+          report()
+        }, () => {})
+        opened.page(show.page).catch(() => {})
       }
       return show.deck
+    }
+    // The PDF for what's being looked at: the story's chapter, or the usual one.
+    function pickDeck() {
+      const ch = chapter()
+      if (ch?.deck) useDeck(ch.deck, () => import('../lib/decks.js').then((m) => m.loadDeck(ch.deck)))
+      else useDeck('default', copy.slides)
+    }
+    // Tells the admin page what this screen is doing.
+    function report() {
+      padHost?.status?.({ viewing: show.on, spot: show.on ? show.spot?.id ?? '' : '', locked: lockedOn?.id ?? '', page: show.page, count: show.count })
     }
 
     // Puts slide `n` on the screen (fading from the one before) once it has been drawn.
@@ -195,9 +230,11 @@ export default function Experience() {
       const page = Math.max(1, Math.min(count, n))
       show.page = page
       setSlide({ page, count: show.count })
+      report()
       const d = deck()
+      const key = show.key
       d.page(page).then((image) => {
-        if (show.page !== page || show.shown === page) return
+        if (show.key !== key || show.page !== page || show.shown === page) return
         const stage = pano.stage.slide ?? (pano.stage.slide = { area: null, from: null, to: null, mix: 1, alpha: 0 })
         if (stage.from) pano.dropTexture(stage.from)
         stage.from = stage.to
@@ -209,6 +246,7 @@ export default function Experience() {
     }
     function enter() {
       if (show.on || !lockedOn) return
+      pickDeck()
       show.on = true
       show.spot = lockedOn
       show.speed = [0, 0, 0]
@@ -216,16 +254,31 @@ export default function Experience() {
       setViewing(true)
       setMoved(true)
       go(show.page)
+      syncDriver()
     }
     function leave() {
       if (!show.on) return
       show.on = false
       setViewing(false)
+      syncDriver()
+      report()
     }
     actions.current = { enter, leave, go: (by) => go(show.page + by), startPad }
 
     // --- The phone controller (/experience/controller): its stick and its A and X buttons ---
-    function padMessage(m) {
+    // Whose controls count: the presenter's while a story chapter is on a monitor; otherwise
+    // whoever the admin chose, or the first phone to have joined.
+    function driver() {
+      if (!padLib) return null
+      return padLib.driverOf({ ...room, status: { viewing: show.on } })
+    }
+    // When the controls change hands, the stick starts from the middle.
+    function syncDriver() {
+      const now = driver()
+      if (now !== pad.from) { pad.from = now; pad.x = 0; pad.y = 0; pad.armed = true }
+    }
+    function padMessage(source, m) {
+      if (source !== driver()) return
       const pc = copy.controller
       // Ignore the first little bit of travel, then run smoothly from 0 to 1.
       const eased = (v) => (Math.abs(v) < pc.deadZone ? 0 : (Math.sign(v) * (Math.abs(v) - pc.deadZone)) / (1 - pc.deadZone))
@@ -240,13 +293,25 @@ export default function Experience() {
       if (m.t === 'down' && m.b === 'a') enter()
       if (m.t === 'down' && m.b === 'x') leave()
     }
+    // News from the controller link: players, who has the controls, and the story.
+    function roomChanged(next) {
+      const before = story()
+      room = next
+      const now = story()
+      // A new chapter (or the story starting or stopping) pulls back out of whatever is open.
+      if (show.on && (Boolean(before) !== Boolean(now) || before?.at !== now?.at)) leave()
+      if (!show.on && (Boolean(before) !== Boolean(now) || before?.at !== now?.at)) lockedOn = undefined // look again
+      syncDriver()
+    }
     // Shows this screen's pairing code and waits for a controller (once; it keeps listening).
     async function startPad() {
       if (padHost) return
-      padHost = () => {}
+      padHost = {}
       try {
-        const [{ hostPad, newCode }, { default: qrcode }] = await Promise.all([import('../lib/padLink.js'), import('qrcode-generator')])
+        const [lib, { default: qrcode }] = await Promise.all([import('../lib/padLink.js'), import('qrcode-generator')])
         if (gone) return
+        const { hostPad, newCode } = lib
+        padLib = lib
         const code = newCode()
         const qr = qrcode(0, 'M')
         qr.addData(`${window.location.origin}/experience/controller?c=${code}`)
@@ -255,10 +320,15 @@ export default function Experience() {
         let d = ''
         for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (qr.isDark(y, x)) d += `M${x} ${y}h1v1h-1z`
         setPadInfo({ code, state: 'waiting', qr: { size, d } })
-        padHost = hostPad(code, padMessage, (state) => {
-          if (state !== 'connected') { pad.x = 0; pad.y = 0 }
-          setPadInfo((info) => ({ ...info, state }))
+        padHost = hostPad(code, {
+          onRoom: roomChanged,
+          onMessage: padMessage,
+          onState: (state) => {
+            if (state !== 'connected') { pad.x = 0; pad.y = 0 }
+            setPadInfo((info) => (info.state === state ? info : { ...info, state }))
+          },
         })
+        report()
       } catch {
         padHost = null
         setPadInfo((info) => ({ ...info, state: 'failed' }))
@@ -271,7 +341,10 @@ export default function Experience() {
       const view = pano.view
       const margin = copy.lockMargin * rad
       if (!show.on) {
+        // With a story running, only the monitor its current chapter is on can be locked on to.
+        const queued = story() ? chapter()?.spot ?? 'none' : null
         const found = spots.find((c) => {
+          if (queued && c.id !== queued) return false
           let off = view.yaw - c.body.lon
           off -= Math.PI * 2 * Math.round(off / (Math.PI * 2))
           return Math.abs(off) < c.body.halfLon + margin && Math.abs(view.pitch - c.body.lat) < c.body.halfLat + margin
@@ -279,7 +352,8 @@ export default function Experience() {
         if (found !== lockedOn) {
           lockedOn = found
           setLocked(Boolean(found))
-          if (found) { show.spot = found; deck() }
+          if (found) { show.spot = found; pickDeck(); deck() }
+          report()
         }
       }
 
@@ -419,7 +493,7 @@ export default function Experience() {
       cancelAnimationFrame(loop)
       sizes.disconnect()
       gone = true
-      padHost?.()
+      padHost?.stop?.()
       show.deck?.close()
       window.removeEventListener('keydown', keyDown)
       window.removeEventListener('keyup', keyUp)

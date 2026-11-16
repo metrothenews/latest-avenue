@@ -20,6 +20,7 @@ const Drive = lazy(() => import('./pages/admin/Drive.jsx'))
 const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
 const Analytics = lazy(() => import('./pages/Analytics.jsx'))
 const AdminTeam = lazy(() => import('./pages/admin/Team.jsx'))
+const AdminExperience = lazy(() => import('./pages/admin/Experience.jsx'))
 const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
@@ -70,6 +71,7 @@ export default function App() {
                 <Route path="/admin/drive" element={<Drive />} />
                 <Route path="/admin/campaigns" element={<Campaigns />} />
                 <Route path="/admin/team" element={<AdminTeam />} />
+                <Route path="/admin/experience" element={<AdminExperience />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
             </Route>

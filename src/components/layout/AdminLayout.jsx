@@ -9,6 +9,7 @@ const adminNav = [
   { label: 'Campaigns', to: '/admin/campaigns' },
   { label: 'Analytics', to: '/analytics' },
   { label: 'Admin', to: '/admin/team' },
+  { label: 'Experience', to: '/admin/experience' },
   // The team portal, as team members see it.
   { label: 'Team', to: '/team' },
 ]
