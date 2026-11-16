@@ -7,16 +7,133 @@
         ".read": true,
         ".write": true,
         ".validate": "$code.matches(/^[A-Z2-9]{5}$/)",
-        "host": { ".validate": "newData.isNumber()" },
-        "pad": { ".validate": "newData.isBoolean()" },
-        "input": {
-          "x": { ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1" },
-          "y": { ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1" },
-          "a": { ".validate": "newData.isNumber()" },
-          "b": { ".validate": "newData.isNumber()" },
-          "$other": { ".validate": false }
+        "host": {
+          ".validate": "newData.isNumber()"
         },
-        "$other": { ".validate": false }
+        "pad": {
+          ".validate": "newData.isBoolean()"
+        },
+        "input": {
+          "x": {
+            ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+          },
+          "y": {
+            ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
+          },
+          "a": {
+            ".validate": "newData.isNumber()"
+          },
+          "b": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "games": {
+      "$code": {
+        ".read": true,
+        ".write": true,
+        ".validate": "$code.matches(/^[A-HJ-NP-Z]{4}$/)",
+        "host": {
+          ".validate": "newData.isNumber()"
+        },
+        "phase": {
+          ".validate": "newData.isString() && newData.val().matches(/^(lobby|write1|vote1|cut|write2|vote2|result)$/)"
+        },
+        "endsAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "game": {
+          ".validate": "newData.isNumber()"
+        },
+        "players": {
+          "$seat": {
+            ".validate": "newData.isBoolean() && $seat.matches(/^[a-z0-9]{12}$/)"
+          }
+        },
+        "answers": {
+          "$round": {
+            ".validate": "$round.matches(/^[12]$/)",
+            "$seat": {
+              ".validate": "$seat.matches(/^[a-z0-9]{12}$/) && newData.hasChildren(['text', 'at'])",
+              "text": {
+                ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
+              },
+              "at": {
+                ".validate": "newData.isNumber()"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
+        },
+        "ballot": {
+          "$round": {
+            ".validate": "$round.matches(/^[12]$/)",
+            "$key": {
+              ".validate": "$key.matches(/^n[0-9]{1,2}$/) && newData.isString() && newData.val().length <= 40"
+            }
+          }
+        },
+        "authors": {
+          "$round": {
+            ".validate": "$round.matches(/^[12]$/)",
+            "$key": {
+              ".validate": "$key.matches(/^n[0-9]{1,2}$/) && newData.isString()"
+            }
+          }
+        },
+        "votes": {
+          "$round": {
+            ".validate": "$round.matches(/^[12]$/)",
+            "$seat": {
+              ".validate": "$seat.matches(/^[a-z0-9]{12}$/) && newData.isString() && newData.val().matches(/^n[0-9]{1,2}$/) && root.child('games').child($code).child('authors').child($round).child(newData.val()).exists() && root.child('games').child($code).child('authors').child($round).child(newData.val()).val() != $seat"
+            }
+          }
+        },
+        "tally": {
+          "$round": {
+            ".validate": "$round.matches(/^[12]$/)",
+            "$key": {
+              ".validate": "$key.matches(/^n[0-9]{1,2}$/) && newData.isNumber()"
+            }
+          }
+        },
+        "finalists": {
+          "$seat": {
+            ".validate": "newData.isBoolean() && $seat.matches(/^[a-z0-9]{12}$/)"
+          }
+        },
+        "result": {
+          "key": {
+            ".validate": "newData.isString()"
+          },
+          "text": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "count": {
+            ".validate": "newData.isNumber()"
+          },
+          "winner": {
+            ".validate": "newData.isString()"
+          },
+          "none": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     }
   }
