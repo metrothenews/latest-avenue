@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BoxIcon, Progress, Window, WinButton } from '../../components/game/Win.jsx'
 import { newCode, now, openGame } from '../../lib/gameLink.js'
 import { countVotes, cut, ranked, shuffle, winner } from '../../lib/gameTally.js'
@@ -9,12 +10,48 @@ const [WIDTH, HEIGHT] = [1024, 768] // the stage: always 4:3, scaled as one piec
 const GRACE = 1500 // ms into a step before "everyone's done" can end it early
 
 const entries = (o) => Object.entries(o ?? {})
+// An /experience pairing code (same letters as lib/padLink.js, which isn't loaded here).
+const newPad = () => Array.from(crypto.getRandomValues(new Uint8Array(5)), (n) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[n % 32]).join('')
+
+// Show mode's police report about the winner: [{ label, value, big }], the suspect's name last.
+export function reportLines(room, code) {
+  const f = game.show.fields
+  const seat = room.result?.winner
+  return [
+    { label: f.caseNo, value: `${String(new Date().getFullYear()).slice(2)}-${code}-${String(room.game ?? 1).padStart(3, '0')}` },
+    { label: f.charge, value: game.show.charge },
+    { label: f.statement, value: `"${room.answers?.[1]?.[seat]?.text ?? '…'}"` },
+    { label: f.remarks, value: `"${room.result?.text ?? '…'}"` },
+    { label: f.witnesses, value: game.screen.votes(room.result?.count ?? 0) },
+    { label: f.finding, value: game.show.finding },
+    { label: f.suspect, value: (room.names?.[seat] ?? '').trim() || game.show.unnamed, big: true },
+  ]
+}
+// How much of the report has been typed `ms` after it opened: the lines with their values cut to
+// what's typed so far, which line the cursor is on, and whether it has finished.
+function typed(lines, ms) {
+  let budget = Math.max(0, Math.floor(((ms - 700) / 1000) * game.show.typing))
+  const out = lines.map((line, i) => {
+    budget -= i === lines.length - 1 ? 30 : 10 // a beat before each line; longer before the name
+    const shown = line.value.slice(0, Math.max(0, Math.min(line.value.length, budget)))
+    budget -= line.value.length
+    return { ...line, shown }
+  })
+  const cursor = out.findIndex((line) => line.shown.length < line.value.length)
+  return { lines: out, cursor, done: cursor === -1 }
+}
 
 // /game/join: the big screen for ALIBI.EXE, and the referee. It opens the room, runs each step's
 // timer, shuffles the answers, counts the votes, makes the cut and names the winner
 // (lib/gameTally.js); phones (/game/play) only send their own answer and vote.
 export default function GameScreen() {
   const [code] = useState(newCode)
+  const [params] = useSearchParams()
+  const showMode = params.get('then') === 'experience' // hand over to /experience when the game ends
+  const [pad] = useState(newPad)
+  const navigate = useNavigate()
+  const [veil, setVeil] = useState(false) // fades the screen to black on the way out
+  const reveal = useRef({ shown: false, at: 0, sent: false })
   const [g, setG] = useState(undefined) // everything under games/{code}; undefined until it loads
   const [failed, setFailed] = useState(false)
   const [scale, setScale] = useState(1)
@@ -98,6 +135,34 @@ export default function GameScreen() {
       const players = Object.keys(room.players ?? {})
       const round = room.phase?.endsWith('2') ? 2 : 1
 
+      // Show mode: after the verdict comes the police report, then the move to the experience.
+      if (showMode) {
+        if (room.pad !== pad) return void change({ pad })
+        const moveOn = (winner, name) => {
+          reveal.current.sent = true
+          change({ next: { pad, winner, name } })
+          setVeil(true)
+          const lines = winner ? reportLines(room, code).map((l) => [l.label, l.value]) : null
+          setTimeout(() => navigate('/experience', { replace: true, state: { handoff: { pad, winner, name, lines } } }), 900)
+        }
+        if (reveal.current.sent) return
+        if (room.phase === 'result' && now() - began.current.at > game.show.verdictSeconds * 1000) {
+          if (room.result?.none || !room.result?.winner) return void moveOn('', '')
+          return void change({ phase: 'report', endsAt: null })
+        }
+        if (room.phase === 'report') {
+          const lines = reportLines(room, code)
+          const name = lines[lines.length - 1].value
+          if (!reveal.current.shown && typed(lines, now() - began.current.at).done) {
+            reveal.current = { shown: true, at: now(), sent: false }
+            return void change({ revealed: name })
+          }
+          // It stays on the name until the admin presses Advance, or for a few seconds.
+          if (reveal.current.shown && (room.advance || now() - reveal.current.at > game.show.holdSeconds * 1000)) moveOn(room.result.winner, name)
+          return
+        }
+      }
+
       if (room.phase === 'write1' || room.phase === 'write2') {
         const writers = round === 1 ? players : players.filter((seat) => room.finalists?.[seat])
         const allIn = settled && writers.length > 0 && writers.every((seat) => room.answers?.[round]?.[seat])
@@ -123,6 +188,13 @@ export default function GameScreen() {
 
   // One sound: a ding when the verdict comes up.
   const phase = g?.phase
+  // Show mode: get the experience ready during the final vote, so the move to it is instant.
+  useEffect(() => {
+    if (!showMode || (phase !== 'vote2' && phase !== 'result')) return
+    import('../Experience.jsx').catch(() => {})
+    fetch('/pano/manifest.json').catch(() => {})
+    fetch('/pano/preview.webp').catch(() => {})
+  }, [showMode, phase])
   useEffect(() => {
     if (phase !== 'result') return
     try {
@@ -186,7 +258,7 @@ export default function GameScreen() {
           {!failed && !g && <Window title={game.name} className="w-[360px]"><p>{copy.opening}</p></Window>}
 
           {!failed && phase === 'lobby' && (
-            <Window title={game.name} className="w-[640px]" status={[copy.suspects(players.length), players.length < game.minPlayers ? copy.needMore(game.minPlayers) : `${players.length} / ${game.maxPlayers}`]}>
+            <Window title={game.name} className="w-[640px]" status={[copy.suspects(players.length), players.length < game.minPlayers ? copy.needMore(game.minPlayers) : `${players.length} / ${game.maxPlayers}`, ...(showMode ? [game.show.lobby] : [])]}>
               <div className="flex items-center gap-6">
                 <div className="w9-sunken h-[250px] w-[250px] shrink-0 bg-white p-[10px]">
                   {qr && <svg viewBox={`0 0 ${qr.size} ${qr.size}`} className="h-full w-full" shapeRendering="crispEdges" role="img" aria-label="QR code to join"><path d={qr.d} /></svg>}
@@ -244,6 +316,24 @@ export default function GameScreen() {
             <Window title={copy.finalists} className="h-[560px] w-[640px]" bodyClass="p-[6px]" status={[copy.through, copy.objects(through.length)]}>{finalistsList}</Window>
           )}
 
+          {!failed && phase === 'report' && (() => {
+            const view = typed(reportLines(g, code), now() - began.current.at)
+            return (
+              <Window title={game.show.title} className="w-[860px]" menu={['File', 'Edit', 'Records', 'Help']} bodyClass="p-[6px]" status={[`${view.lines[0].shown}`, clock]}>
+                <dl className="w9-sunken bg-white px-[18px] py-[14px]">
+                  {view.lines.map((line, i) => (
+                    <div key={line.label} className={`flex items-baseline gap-4 ${line.big ? 'mt-[14px] border-t border-[#808080] pt-[14px]' : 'py-[5px]'}`}>
+                      <dt className="w-[230px] shrink-0 text-[17px] uppercase text-[#404040]">{line.label}</dt>
+                      <dd className={`min-w-0 flex-1 break-words font-bold ${line.big ? 'text-[46px] leading-none' : 'text-[22px] leading-tight'}`}>
+                        {line.shown}{i === view.cursor && !view.done && <span className="ml-[2px] inline-block h-[0.9em] w-[0.5em] translate-y-[0.1em] bg-black" />}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </Window>
+            )
+          })()}
+
           {!failed && phase === 'result' && (
             <Window title={g.result?.none ? game.name : copy.verdict} className="w-[620px]">
               <div className="flex items-center gap-5">
@@ -253,7 +343,7 @@ export default function GameScreen() {
                   {!g.result?.none && <p className="mt-2 text-[18px]">{copy.votes(g.result?.count ?? 0)}</p>}
                 </div>
               </div>
-              <div className="mt-6 flex justify-center"><WinButton className="w-[180px] text-[20px]" onClick={again} autoFocus>{copy.again}</WinButton></div>
+              {!showMode && <div className="mt-6 flex justify-center"><WinButton className="w-[180px] text-[20px]" onClick={again} autoFocus>{copy.again}</WinButton></div>}
             </Window>
           )}
         </div>
@@ -272,6 +362,7 @@ export default function GameScreen() {
           <p className="w9-well flex h-full shrink-0 items-center px-[10px] tabular-nums">{clock}</p>
         </footer>
       </div>
+      <div className={`pointer-events-none absolute inset-0 bg-black transition-opacity duration-700 motion-reduce:transition-none ${veil ? 'opacity-100' : 'opacity-0'}`} />
     </main>
   )
 }

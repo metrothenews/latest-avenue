@@ -7,13 +7,20 @@
 //   players/{seat}   when that phone joined (removed when its page closes)
 //   inputs/{seat}    { x, y, a, b }: that phone's stick (-1..1 each way, up is +y) and how many
 //                    times it has pressed A and X ("b"); the screen acts when a count goes up
+//   first            the seat that gets the controls unless the admin says otherwise (the
+//                    party game's winner, when the screen was opened from the game)
+//   names/{seat}     that player's name, when they gave one in the game
+//   crowd/{seat}     { k, c }: the last thing a phone without the controls pressed on its
+//                    audience pad (a nudge or a reaction), and a count that goes up each time
 //   status           what the screen is doing, for the admin: { viewing, spot, page, count, locked }
 //   show             written only by the owner (signed in):
 //     driver         whose controls count: a seat, 'admin', or '' for whoever joined first
 //     before         who had them before the admin took over (to hand them back)
 //     input          the admin's own { x, y, a, b }
 //     removed/{seat} true for a phone the admin has removed
-//     story          { on, at, chapters: [{ title, spot, deck }] } (see data/experience.js)
+//     mute           true to ignore the audience pads
+//     hints, hintNow false to switch the "look this way" prompt off; a count that shows it now
+//     story          { on, at, phone, started, skip, chapters: [{ title, spot, deck }] }
 import { getApp } from 'firebase/app'
 import { getDatabase, onDisconnect, onValue, ref, remove, serverTimestamp, set, update } from 'firebase/database'
 import './firebase.js'
@@ -49,13 +56,14 @@ export const seatsOf = (room) => Object.entries(room?.players ?? {})
   .map(([seat]) => seat)
 
 // Whose controls count right now: the admin while a story's chapter is being presented, else
-// whoever the admin chose, else the first phone to have joined.
+// whoever the admin chose, else the game's winner, else the first phone to have joined.
 export function driverOf(room) {
   const show = room?.show
   if (show?.story?.on && room?.status?.viewing) return ADMIN
   if (show?.driver === ADMIN) return ADMIN
   const seats = seatsOf(room)
-  return seats.includes(show?.driver) ? show.driver : seats[0] ?? null
+  if (seats.includes(show?.driver)) return show.driver
+  return seats.includes(room?.first) ? room.first : seats[0] ?? null
 }
 
 // Turns a stream of { x, y, a, b } into messages, one source at a time: the stick as it is, and
@@ -77,12 +85,14 @@ function reader(onMessage) {
 // each phone's and the admin's stick and presses (`source` is a seat or ADMIN; the screen decides
 // whose count with driverOf). onState('waiting' | 'connected' | 'failed').
 // Returns { status(fields), stop() }.
-export function hostPad(code, { onRoom = () => {}, onMessage, onState }) {
+export function hostPad(code, { onRoom = () => {}, onMessage, onState, first = '' }) {
   const read = reader(onMessage)
   let known = new Set()
   onState('waiting')
-  for (const path of ['host', 'players', 'inputs', 'status']) onDisconnect(at(code, path)).remove().catch(() => {})
+  const mine = ['host', 'players', 'inputs', 'status', 'first', 'names', 'crowd']
+  for (const path of mine) onDisconnect(at(code, path)).remove().catch(() => {})
   set(at(code, 'host'), serverTimestamp()).catch(() => onState('failed'))
+  if (first) set(at(code, 'first'), first).catch(() => {})
   const stop = onValue(at(code), (snap) => {
     const room = snap.val() ?? {}
     onRoom(room)
@@ -94,20 +104,22 @@ export function hostPad(code, { onRoom = () => {}, onMessage, onState }) {
   }, () => onState('failed'))
   return {
     status: (fields) => update(at(code, 'status'), fields).catch(() => {}),
-    stop: () => { stop(); for (const path of ['host', 'players', 'inputs', 'status']) remove(at(code, path)).catch(() => {}) },
+    stop: () => { stop(); for (const path of mine) remove(at(code, path)).catch(() => {}) },
   }
 }
 
 // --- A phone ---
 // onState({ link: 'connecting' | 'connected' | 'unknown' (no screen is showing that code) |
 // 'removed' | 'failed', driving: this phone has the controls, presenting: the presenter has them
-// for now }). Returns { stick(x, y), press('a' | 'x'), stop() }.
-export function joinPad(code, seat, onState) {
+// for now, muted: the admin has switched the audience pads off }).
+// Returns { stick(x, y), press('a' | 'x'), crowd(kind), stop() }.
+export function joinPad(code, seat, onState, name = '') {
   const input = { x: 0, y: 0, a: 0, b: 0 }
   let live = false // a screen is there and we are connected to the database
   let online = false
   let room = null
-  onState({ link: 'connecting', driving: false, presenting: false })
+  let pressed = 0 // audience pad presses
+  onState({ link: 'connecting', driving: false, presenting: false, muted: false })
 
   function settle() {
     if (room === null) return
@@ -120,6 +132,7 @@ export function joinPad(code, seat, onState) {
       onDisconnect(at(code, `inputs/${seat}`)).remove().catch(() => {})
       set(at(code, `players/${seat}`), room.players?.[seat] ?? serverTimestamp()).catch(() => {})
       set(at(code, `inputs/${seat}`), input).catch(() => {})
+      if (name) set(at(code, `names/${seat}`), name.slice(0, 20)).catch(() => {})
     }
     if (!now && live) { remove(at(code, `players/${seat}`)).catch(() => {}); remove(at(code, `inputs/${seat}`)).catch(() => {}) }
     live = now
@@ -128,11 +141,12 @@ export function joinPad(code, seat, onState) {
       link: removed ? 'removed' : now && room.players?.[seat] ? 'connected' : online && !hosted ? 'unknown' : 'connecting',
       driving: driver === seat,
       presenting: driver === ADMIN,
+      muted: Boolean(room.show?.mute),
     })
   }
   const stops = [
     onValue(ref(db, '.info/connected'), (snap) => { online = Boolean(snap.val()); settle() }),
-    onValue(at(code), (snap) => { room = snap.val() ?? {}; settle() }, () => onState({ link: 'failed', driving: false, presenting: false })),
+    onValue(at(code), (snap) => { room = snap.val() ?? {}; settle() }, () => onState({ link: 'failed', driving: false, presenting: false, muted: false })),
   ]
 
   return {
@@ -142,6 +156,8 @@ export function joinPad(code, seat, onState) {
       input[key] += 1
       if (live) update(at(code, `inputs/${seat}`), { [key]: input[key] }).catch(() => {})
     },
+    // The audience pad: 'l' | 'r' | 'u' | 'd' (a nudge) or a reaction's name.
+    crowd(kind) { if (live) set(at(code, `crowd/${seat}`), { k: kind, c: ++pressed }).catch(() => {}) },
     stop() {
       stops.forEach((stop) => stop())
       if (live) { remove(at(code, `players/${seat}`)).catch(() => {}); remove(at(code, `inputs/${seat}`)).catch(() => {}) }
@@ -150,12 +166,12 @@ export function joinPad(code, seat, onState) {
 }
 
 // --- The admin (signed in as the owner) ---
-// onRoom(everything under pads/{code}, or null when no screen is showing that code).
+// onRoom(everything under pads/{code}; `host` is missing while no screen is showing that code).
 // Returns { show(fields) (writes under show/, null removes), stick(x, y), press('a' | 'x'), stop() }.
 export function adminPad(code, onRoom, onError = () => {}) {
   const input = { x: 0, y: 0, a: 0, b: 0 }
   const send = () => set(at(code, 'show/input'), input).catch(onError)
-  const stop = onValue(at(code), (snap) => { const room = snap.val(); onRoom(room?.host ? room : null) }, onError)
+  const stop = onValue(at(code), (snap) => onRoom(snap.val() ?? {}), onError)
   onDisconnect(at(code, 'show/input')).remove().catch(() => {})
   return {
     show: (fields) => update(at(code, 'show'), fields).catch(onError),

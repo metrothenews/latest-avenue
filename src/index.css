@@ -24,6 +24,16 @@ body::before {
 }
 
 @layer components {
+  /* /experience: the audience's reactions drift up and fade; the call waveform's bars breathe;
+     the "look this way" prompt's chevrons drift. All hold still for reduced motion. */
+  .crowd-rise { animation: crowd-rise 2.6s ease-out forwards; }
+  .wave-bar { animation: wave-bar 1.1s ease-in-out infinite alternate; transform-origin: center; }
+  .hint-drift { animation: hint-drift 1.2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .crowd-rise { animation: crowd-fade 2.6s linear forwards; }
+    .wave-bar, .hint-drift { animation: none; }
+  }
+
   /* ALIBI.EXE (/game): the look of a late-90s desktop. Grey panels with a bevel made of four
      thin lines, a navy title bar, plain black text. Drawn here, with no borrowed artwork. */
   .w9 {
@@ -113,3 +123,8 @@ body::before {
   .doc-content th { @apply bg-white/5 font-semibold; }
   .doc-content td > p:first-child, .doc-content th > p:first-child, .doc-content li > p:first-child { @apply mt-0; }
 }
+
+@keyframes crowd-rise { from { transform: translateY(0); opacity: 0.9; } to { transform: translateY(-38vh); opacity: 0; } }
+@keyframes crowd-fade { from { opacity: 0.9; } to { opacity: 0; } }
+@keyframes wave-bar { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+@keyframes hint-drift { 0%, 100% { transform: translateX(0); opacity: 0.35; } 50% { transform: translateX(var(--drift, 8px)); opacity: 1; } }

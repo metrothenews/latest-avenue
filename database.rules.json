@@ -56,10 +56,41 @@
           },
           "$other": {
             ".validate": false
+          },
+          "step": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          },
+          "callEnds": {
+            ".validate": "newData.isNumber()"
           }
         },
         "show": {
           ".write": "auth != null && auth.uid === 'cUUEuJ7NRCZVuMNhSxOr7yzA8DX2'"
+        },
+        "first": {
+          ".write": true,
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{12}$/)"
+        },
+        "names": {
+          ".write": true,
+          "$seat": {
+            ".validate": "$seat.matches(/^[a-z0-9]{12}$/) && newData.isString() && newData.val().length <= 20"
+          }
+        },
+        "crowd": {
+          ".write": true,
+          "$seat": {
+            ".validate": "$seat.matches(/^[a-z0-9]{12}$/)",
+            "k": {
+              ".validate": "newData.isString() && newData.val().matches(/^(l|r|u|d|laugh|gasp|boo|object)$/)"
+            },
+            "c": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
         },
         "$other": {
           ".validate": false
@@ -75,7 +106,7 @@
           ".validate": "newData.isNumber()"
         },
         "phase": {
-          ".validate": "newData.isString() && newData.val().matches(/^(lobby|write1|vote1|cut|write2|vote2|result)$/)"
+          ".validate": "newData.isString() && newData.val().matches(/^(lobby|write1|vote1|cut|write2|vote2|result|report)$/)"
         },
         "endsAt": {
           ".validate": "newData.isNumber()"
@@ -157,6 +188,34 @@
           },
           "none": {
             ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "names": {
+          "$seat": {
+            ".validate": "$seat.matches(/^[a-z0-9]{12}$/) && newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+          }
+        },
+        "pad": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Z2-9]{5}$/)"
+        },
+        "advance": {
+          ".validate": "newData.isBoolean()"
+        },
+        "revealed": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "next": {
+          "pad": {
+            ".validate": "newData.isString() && newData.val().matches(/^[A-Z2-9]{5}$/)"
+          },
+          "winner": {
+            ".validate": "newData.isString() && newData.val().length <= 12"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
           },
           "$other": {
             ".validate": false

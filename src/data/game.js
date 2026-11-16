@@ -16,6 +16,28 @@ export const game = {
   },
   rounds: { 1: 'Round 1', 2: 'Final round' },
 
+  // Show mode (/game/join?then=experience): when the game ends, a police report types itself out
+  // and reveals the winner's name, then the big screen becomes the /experience (as if the game had
+  // been running on the Desk 1 monitor all along) and the winner's phone becomes its controller.
+  show: {
+    lobby: 'Show mode',
+    verdictSeconds: 2.5, // how long the verdict box stays up before the report
+    typing: 30, // characters a second
+    holdSeconds: 10, // how long it waits on the name if the admin doesn't press Advance
+    nameLength: 20,
+    title: 'Incident Report',
+    unnamed: 'Unknown',
+    charge: 'Homicide (suspected)',
+    fields: { caseNo: 'Case no.', charge: 'Charge', statement: 'Statement', remarks: 'Remarks at the scene', witnesses: 'Witnesses', finding: 'Finding', suspect: 'Suspect name' },
+    finding: 'GUILTY',
+    // On the phones.
+    askName: 'Your name, for the record',
+    nameOk: 'OK',
+    stay: 'Stay where you are.',
+    watch: 'Watch the screen.',
+    suspect: 'Suspect',
+  },
+
   // The big screen.
   screen: {
     scan: 'Scan to join',

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import Logo from '../components/layout/Logo.jsx'
 import { startPano } from '../lib/pano.js'
 import { centre, fit, outline } from '../lib/panoSpots.js'
 import { openSlides } from '../lib/slides.js'
+import { drawReport } from '../lib/reportCard.js'
 import { experience as copy } from '../data/experience.js'
 
 // How thick the interface's lines are on screen, in px.
@@ -18,6 +20,21 @@ function Glyph({ children }) {
   )
 }
 
+// The audience's reactions, as line drawings on a 32 x 32 grid.
+const REACTIONS = {
+  laugh: '<circle cx="16" cy="16" r="12"/><path d="M10 17a6 6 0 0 0 12 0zM11 12h2M19 12h2"/>',
+  gasp: '<circle cx="16" cy="16" r="12"/><circle cx="16" cy="20" r="3"/><path d="M11 12h1M20 12h1"/>',
+  boo: '<path d="M9 5v13h9l4 8c2 0 3-1 3-3l-1-5h-2V5z"/><path d="M5 5v13"/>',
+  object: '<path d="M16 4l13 23H3z"/><path d="M16 12v8M16 23.5v.5"/>',
+}
+
+// The call waveform's bars: heights and timings fixed once, so it looks organic but doesn't jump.
+const WAVE = Array.from({ length: 56 }, (_, i) => ({
+  h: 28 + Math.round(60 * Math.abs(Math.sin(i * 0.9) * Math.cos(i * 0.37))),
+  t: 0.7 + ((i * 37) % 10) / 12,
+  d: -((i * 53) % 20) / 10,
+}))
+
 const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }
 
 // /experience: stand in one spot of a 360° panorama and look around (lib/pano.js draws it).
@@ -31,7 +48,15 @@ export default function Experience() {
   const canvas = useRef(null)
   const [state, setState] = useState('loading') // loading | ready | unsupported | failed
   const [moved, setMoved] = useState(false)
-  const [full, setFull] = useState(false)
+  const [full, setFull] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement))
+  // Arriving from the party game: { pad, winner, name, lines } (see pages/game/GameScreen.jsx).
+  const handoff = useLocation().state?.handoff ?? null
+  const [veil, setVeil] = useState(Boolean(handoff)) // black until the first picture is up
+  const [calling, setCalling] = useState(false) // the story's phone step is playing
+  const [hint, setHint] = useState('') // the "look this way" prompt: '' | 'l' | 'r'
+  const hud = useRef({}) // the controller readout's parts: { box, knob, a, x, name }
+  const edges = useRef({}) // the audience's nudges, one mark per edge: { l, r, u, d }
+  const crowdBox = useRef(null) // where the audience's reactions drift up
   const [locked, setLocked] = useState(false) // looking at a computer
   const [viewing, setViewing] = useState(false) // closed in on a screen, showing slides
   const [slide, setSlide] = useState({ page: 1, count: 0 })
@@ -57,7 +82,7 @@ export default function Experience() {
 
   useEffect(() => {
     const el = canvas.current
-    const pano = startPano(el, copy, { onReady: () => setState('ready'), onError: () => setState('failed') })
+    const pano = startPano(el, copy, { onReady: () => { setState('ready'); if (handoff) beginIntro() }, onError: () => setState('failed') })
     if (!pano) return setState('unsupported')
 
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -173,7 +198,21 @@ export default function Experience() {
     run()
 
     // --- The computers: lock on, close in, slides ---
-    const spots = copy.computers.map((c) => ({ id: c.id, body: centre(c.body, copy.panoWidth), ring: outline(c.body, copy.panoWidth, 26), screen: c.screen }))
+    const spots = [
+      ...copy.computers.map((c) => ({ id: c.id, body: centre(c.body, copy.panoWidth), ring: outline(c.body, copy.panoWidth, 26), screen: c.screen })),
+      { id: copy.phone.id, kind: 'phone', body: centre(copy.phone.body, copy.panoWidth), ring: outline(copy.phone.body, copy.panoWidth, 26) },
+    ]
+    let aim = null // what the outline and the A prompt are on
+    let intro = false // arriving from the party game: its last screen is on a monitor
+    let phoneDone = false // the story's phone step has been done
+    let call = null // { ends } while the phone step's recording plays
+    let storyRun = null
+    let skipSeen
+    let hintSeen
+    let seek = { since: performance.now(), target: null, shown: '' } // how long the player has been looking for what's next
+    const crowdSeen = new Map() // seat → the count last seen on its audience pad
+    const nudges = { l: 0, r: 0, u: 0, d: 0 }
+    const hudSeen = { seat: null, a: 0, b: 0 }
     const show = { on: false, spot: null, page: 1, count: 0, ratio: 4 / 3, deck: null, shown: 0, speed: [0, 0, 0], key: 'default', source: copy.slides } // `spot` is the one locked on to
     const decks = new Map() // each PDF that has been opened: key → { deck, page, count, ratio }
     let room = null // everything the controller link knows: players, who has the controls, the story
@@ -187,6 +226,29 @@ export default function Experience() {
     // can be opened, and it shows that chapter's PDF.
     const story = () => (room?.show?.story?.on ? room.show.story : null)
     const chapter = () => { const st = story(); return st ? st.chapters?.[st.at] ?? null : null }
+    // The one thing that can be opened right now while a story runs: the phone first (if the
+    // story starts with it), nothing while its recording plays, then the chapter's monitor.
+    function target() {
+      const st = story()
+      if (!st) return null
+      if (call) return 'none'
+      if (st.phone && !phoneDone) return copy.phone.id
+      return chapter()?.spot ?? 'none'
+    }
+    function startCall() {
+      phoneDone = true
+      call = { ends: performance.now() + copy.callSeconds * 1000 }
+      lockedOn = undefined
+      setCalling(true)
+      report()
+    }
+    function endCall() {
+      if (!call) return
+      call = null
+      lockedOn = undefined
+      setCalling(false)
+      report()
+    }
 
     // Switches which PDF the monitors show, remembering the slide each one was on.
     function useDeck(key, source) {
@@ -201,7 +263,7 @@ export default function Experience() {
     function deck() {
       if (!show.deck) {
         const key = show.key
-        const opened = (show.deck = openSlides(typeof show.source === 'function' ? show.source() : show.source))
+        const opened = (show.deck = show.source?.page ? show.source : openSlides(typeof show.source === 'function' ? show.source() : show.source))
         opened.info.then(({ count, ratio }) => {
           if (show.key !== key) return
           show.count = count
@@ -221,7 +283,8 @@ export default function Experience() {
     }
     // Tells the admin page what this screen is doing.
     function report() {
-      padHost?.status?.({ viewing: show.on, spot: show.on ? show.spot?.id ?? '' : '', locked: lockedOn?.id ?? '', page: show.page, count: show.count })
+      const step = !story() ? '' : call ? 'call' : target() === copy.phone.id ? 'phone' : 'monitor'
+      padHost?.status?.({ viewing: show.on && !intro, spot: show.on ? show.spot?.id ?? '' : '', locked: lockedOn?.id ?? '', page: show.page, count: show.count, step, callEnds: call ? Math.round(Date.now() + call.ends - performance.now()) : 0 })
     }
 
     // Puts slide `n` on the screen (fading from the one before) once it has been drawn.
@@ -245,7 +308,8 @@ export default function Experience() {
       }, () => {})
     }
     function enter() {
-      if (show.on || !lockedOn) return
+      if (show.on || !lockedOn || intro) return
+      if (lockedOn.kind === 'phone') return startCall()
       pickDeck()
       show.on = true
       show.spot = lockedOn
@@ -257,7 +321,7 @@ export default function Experience() {
       syncDriver()
     }
     function leave() {
-      if (!show.on) return
+      if (!show.on || intro) return
       show.on = false
       setViewing(false)
       syncDriver()
@@ -301,18 +365,78 @@ export default function Experience() {
       // A new chapter (or the story starting or stopping) pulls back out of whatever is open.
       if (show.on && (Boolean(before) !== Boolean(now) || before?.at !== now?.at)) leave()
       if (!show.on && (Boolean(before) !== Boolean(now) || before?.at !== now?.at)) lockedOn = undefined // look again
+      // A story that has just been started begins again from its phone step.
+      if ((now?.started ?? null) !== storyRun) { storyRun = now?.started ?? null; phoneDone = false; endCall(); lockedOn = undefined }
+      if ((now?.skip ?? 0) !== skipSeen) { if (skipSeen !== undefined) endCall(); skipSeen = now?.skip ?? 0 }
+      if ((room.show?.hintNow ?? 0) !== hintSeen) { if (hintSeen !== undefined) seek.since = -Infinity; hintSeen = room.show?.hintNow ?? 0 }
       syncDriver()
+      readout()
+      crowd()
     }
+    // The controller readout: the player's stick and buttons, live, so the room can see what
+    // they're doing. It shows a player's input only, never the admin's.
+    function readout() {
+      const parts = hud.current
+      const seat = driver()
+      const input = seat && seat !== padLib.ADMIN ? room.inputs?.[seat] : null
+      if (parts.box) parts.box.style.opacity = input ? 1 : 0
+      if (!input) { hudSeen.seat = null; return }
+      parts.knob?.setAttribute('transform', `translate(${(Number(input.x) || 0) * 9} ${-(Number(input.y) || 0) * 9})`)
+      if (parts.name) parts.name.textContent = room.names?.[seat] ?? ''
+      const flash = (el) => { if (!el) return; el.setAttribute('fill-opacity', '0.9'); setTimeout(() => el.setAttribute('fill-opacity', '0'), 220) }
+      if (hudSeen.seat === seat) {
+        if (input.a > hudSeen.a) flash(parts.a)
+        if (input.b > hudSeen.b) flash(parts.x)
+      }
+      Object.assign(hudSeen, { seat, a: input.a ?? 0, b: input.b ?? 0 })
+    }
+    // The audience: a nudge marks that edge of the screen; a reaction drifts up the side.
+    function crowd() {
+      for (const [seat, press] of Object.entries(room.crowd ?? {})) {
+        const before = crowdSeen.get(seat) ?? 0
+        crowdSeen.set(seat, press.c)
+        if (press.c <= before || room.show?.mute || seat === driver()) continue
+        if (press.k in nudges) nudges[press.k] = Math.min(6, nudges[press.k] + 1)
+        else if (crowdBox.current && crowdBox.current.childElementCount < 24) {
+          const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+          mark.setAttribute('viewBox', '0 0 32 32')
+          mark.setAttribute('class', 'crowd-rise absolute bottom-0 h-9 w-9')
+          mark.style.right = `${Math.round(Math.random() * 60)}px`
+          mark.innerHTML = `<g fill="none" stroke="white" stroke-opacity="0.75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${REACTIONS[press.k] ?? ''}</g>`
+          crowdBox.current.append(mark)
+          setTimeout(() => mark.remove(), 2700)
+        }
+      }
+    }
+    // Arriving from the party game: its police report is on the Desk 1 monitor, filling the view
+    // as if the game had been running there. Hold a moment, then pull back into the room.
+    function beginIntro() {
+      setTimeout(() => setVeil(false), 350)
+      const desk = spots.find((c) => c.id === copy.handoff.spot)
+      if (!handoff.lines || !desk) return
+      const card = drawReport(handoff.lines, copy.handoff.title)
+      const picture = { info: Promise.resolve({ count: 1, ratio: card.width / card.height }), page: () => Promise.resolve(card), close: () => {} }
+      useDeck('report', picture)
+      show.ratio = card.width / card.height
+      Object.assign(show, { spot: desk, on: true, snap: true, speed: [0, 0, 0] })
+      lockedOn = desk
+      intro = true
+      go(1)
+      setTimeout(() => { intro = false; leave(); lockedOn = undefined }, copy.handoff.holdSeconds * 1000 + 350)
+    }
+    if (handoff?.pad) startPad()
+
     // Shows this screen's pairing code and waits for a controller (once; it keeps listening).
     async function startPad() {
       if (padHost) return
       padHost = {}
+      seek.since = performance.now()
       try {
         const [lib, { default: qrcode }] = await Promise.all([import('../lib/padLink.js'), import('qrcode-generator')])
         if (gone) return
         const { hostPad, newCode } = lib
         padLib = lib
-        const code = newCode()
+        const code = handoff?.pad ?? newCode()
         const qr = qrcode(0, 'M')
         qr.addData(`${window.location.origin}/experience/controller?c=${code}`)
         qr.make()
@@ -321,6 +445,7 @@ export default function Experience() {
         for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (qr.isDark(y, x)) d += `M${x} ${y}h1v1h-1z`
         setPadInfo({ code, state: 'waiting', qr: { size, d } })
         padHost = hostPad(code, {
+          first: handoff?.winner ?? '',
           onRoom: roomChanged,
           onMessage: padMessage,
           onState: (state) => {
@@ -342,19 +467,44 @@ export default function Experience() {
       const margin = copy.lockMargin * rad
       if (!show.on) {
         // With a story running, only the monitor its current chapter is on can be locked on to.
-        const queued = story() ? chapter()?.spot ?? 'none' : null
-        const found = spots.find((c) => {
-          if (queued && c.id !== queued) return false
+        const queued = target()
+        const found = intro ? lockedOn : spots.find((c) => {
+          if (queued ? c.id !== queued : c.kind === 'phone') return false
           let off = view.yaw - c.body.lon
           off -= Math.PI * 2 * Math.round(off / (Math.PI * 2))
-          return Math.abs(off) < c.body.halfLon + margin && Math.abs(view.pitch - c.body.lat) < c.body.halfLat + margin
+          // Sideways it has to be near the middle of the view; up and down it only has to be well in view
+          // (the phone sits below eye level, and looking level at it should still count).
+          const reach = Math.max(c.body.halfLat + margin, Math.atan(pano.field().y) * 0.75)
+          return Math.abs(off) < c.body.halfLon + margin && Math.abs(view.pitch - c.body.lat) < reach
         }) ?? null
         if (found !== lockedOn) {
           lockedOn = found
           setLocked(Boolean(found))
-          if (found) { show.spot = found; pickDeck(); deck() }
+          if (found) { aim = found; if (found.kind !== 'phone') { show.spot = found; pickDeck(); deck() } }
           report()
         }
+      }
+      const clock = performance.now()
+      if (call && clock >= call.ends) endCall()
+
+      // The prompt for a player who hasn't found what's next: which way round to look.
+      const wanted = target()
+      const lost = wanted && wanted !== 'none' && !show.on && !lockedOn && padLib && driver() !== padLib.ADMIN && room?.show?.hints !== false
+      if (!lost || wanted !== seek.target) seek = { since: lost && wanted === seek.target ? seek.since : clock, target: wanted, shown: seek.shown }
+      let way = ''
+      if (lost && clock - seek.since > copy.hintSeconds * 1000) {
+        const item = spots.find((c) => c.id === wanted)
+        let off = item ? item.body.lon - view.yaw : 0
+        off -= Math.PI * 2 * Math.round(off / (Math.PI * 2))
+        way = off < 0 ? 'l' : 'r'
+      }
+      if (way !== seek.shown) { seek.shown = way; setHint(way) }
+
+      // The audience's nudges fade a couple of seconds after they stop.
+      for (const key of Object.keys(nudges)) {
+        nudges[key] *= Math.exp(-dt / 2.2)
+        const mark = edges.current[key]
+        if (mark) mark.style.opacity = Math.min(1, nudges[key] / 3).toFixed(2)
       }
 
       // Closing in on the screen, or pulling back out.
@@ -371,7 +521,7 @@ export default function Experience() {
           let off = area[0] + area[1] / 2 - view.yaw
           off -= Math.PI * 2 * Math.round(off / (Math.PI * 2))
           const level = area[2] - area[3] / 2
-          if (calm) pano.set(view.yaw + off, level)
+          if (calm || show.snap) pano.set(view.yaw + off, level)
           else {
             let [yaw, pitch] = [0, view.pitch]
             ;[yaw, show.speed[0]] = spring(0, show.speed[0], off, copy.closeInTime, dt)
@@ -379,7 +529,7 @@ export default function Experience() {
             pano.set(view.yaw + yaw, pitch)
           }
         }
-        if (calm) view.zoom = to
+        if (calm || show.snap) view.zoom = to
         else {
           ;[view.zoom, show.speed[2]] = spring(view.zoom, show.speed[2], to, copy.closeInTime, dt)
           if (!show.on && Math.abs(view.zoom - 1) < 0.003) { view.zoom = 1; show.speed[2] = 0 }
@@ -391,17 +541,21 @@ export default function Experience() {
           stage.area = area
           const arrived = to > 1 ? (view.zoom - 1) / (to - 1) : 0
           const want = show.on && stage.to && arrived > 0.6 ? 1 : 0
-          stage.alpha = calm ? want : Math.max(0, Math.min(1, stage.alpha + (want ? dt : -dt) / 0.3))
+          stage.alpha = calm || show.snap ? want : Math.max(0, Math.min(1, stage.alpha + (want ? dt : -dt) / 0.3))
+          if (show.snap && stage.alpha === 1) show.snap = false // the picture is up: from here it moves normally
           if (stage.from) {
             stage.mix = calm ? 1 : Math.min(1, stage.mix + dt / copy.slideFade)
             if (stage.mix >= 1) { pano.dropTexture(stage.from); stage.from = null }
           }
         }
 
-        // The outline and the prompt follow the computer on the page.
-        const points = spot.ring.map(([lon, lat]) => pano.project(lon, lat))
+      }
+
+      // The outline and the prompt follow whatever is being looked at.
+      if (aim) {
+        const points = aim.ring.map(([lon, lat]) => pano.project(lon, lat))
         ring.current?.setAttribute('d', points.every(Boolean) ? `M${points.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z` : '')
-        const top = pano.project(spot.body.lon, spot.body.lat + spot.body.halfLat)
+        const top = pano.project(aim.body.lon, aim.body.lat + aim.body.halfLat)
         if (prompt.current && top) prompt.current.style.transform = `translate(${(top[0] - 32).toFixed(1)}px, ${(top[1] - 64 - 14).toFixed(1)}px)` // sits just above it
       }
     }
@@ -580,7 +734,37 @@ export default function Experience() {
           <span className="text-xs font-semibold uppercase tracking-widest text-white/60">{copy.close}</span>
         </button>
       </div>
-      {state === 'ready' && !moved && <p className={`pointer-events-none absolute bottom-6 left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 px-4 py-2 text-center text-sm ${chip}`}>{touch ? copy.hintTouch : copy.hint}</p>}
+      {/* The audience: a mark at each edge for their nudges, and their reactions drifting up the side. */}
+      {[['l', 'left-2 top-1/2 -translate-y-1/2', 'M20 6l-10 10 10 10'], ['r', 'right-2 top-1/2 -translate-y-1/2', 'M12 6l10 10-10 10'], ['u', 'left-1/2 top-16 -translate-x-1/2', 'M6 20l10-10 10 10'], ['d', 'bottom-28 left-1/2 -translate-x-1/2', 'M6 12l10 10 10-10']].map(([key, place, d]) => (
+        <span key={key} ref={(el) => { edges.current[key] = el }} className={`pointer-events-none absolute h-16 w-16 text-white opacity-0 ${place}`} aria-hidden="true"><Glyph><path d={d} /></Glyph></span>
+      ))}
+      <div ref={crowdBox} className="pointer-events-none absolute bottom-24 right-6 h-0 w-24" aria-hidden="true" />
+      {/* The player who hasn't found what's next: a stick, and chevrons drifting the way to look. */}
+      <div className={`pointer-events-none absolute bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-2 text-white transition-opacity duration-700 motion-reduce:transition-none ${hint && !viewing ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+        <span className={`flex ${hint === 'l' ? '' : 'order-2'}`} style={{ '--drift': hint === 'l' ? '-8px' : '8px' }}>
+          {[0, 1, 2].map((i) => <span key={i} className="hint-drift block h-10 w-6" style={{ animationDelay: `${(hint === 'l' ? 2 - i : i) * 0.15}s` }}><Glyph><path d={hint === 'l' ? 'M20 6l-10 10 10 10' : 'M12 6l10 10-10 10'} /></Glyph></span>)}
+        </span>
+        <span className="block h-12 w-12"><Glyph><circle cx="16" cy="16" r="13" /><circle cx={hint === 'l' ? 12 : 20} cy="16" r="5" /></Glyph></span>
+      </div>
+      {/* The phone step: a waveform along the bottom while the recording plays (nothing is heard yet). */}
+      <div className={`pointer-events-none absolute bottom-20 left-1/2 flex h-12 w-[min(70vw,36rem)] -translate-x-1/2 items-center justify-between transition-opacity duration-700 motion-reduce:transition-none ${calling ? 'opacity-100' : 'opacity-0'}`} role="img" aria-label={calling ? 'A recording is playing' : undefined} aria-hidden={!calling}>
+        {WAVE.map((bar, i) => <span key={i} className="wave-bar block w-[3px] rounded-full bg-white/60" style={{ height: `${bar.h}%`, animationDuration: `${bar.t}s`, animationDelay: `${bar.d}s` }} />)}
+      </div>
+      {/* Who's driving: the player's stick and buttons, live, in the same thin lines. */}
+      <div ref={(el) => { hud.current.box = el }} className="pointer-events-none absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-3 text-white opacity-0 transition-opacity duration-500 motion-reduce:transition-none" aria-hidden="true">
+        <svg viewBox="0 0 96 32" className="h-9 w-[6.75rem] [&_*]:[vector-effect:non-scaling-stroke]" fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="16" cy="16" r="14" />
+          <circle ref={(el) => { hud.current.knob = el }} cx="16" cy="16" r="5" />
+          <circle ref={(el) => { hud.current.x = el }} cx="58" cy="12" r="9" fill="white" fillOpacity="0" />
+          <path d="M54.5 8l7 8M61.5 8l-7 8" />
+          <circle ref={(el) => { hud.current.a = el }} cx="82" cy="20" r="9" fill="white" fillOpacity="0" />
+          <path d="M78.5 24l3.5-8 3.5 8M79.8 21.2h4.4" />
+        </svg>
+        <span ref={(el) => { hud.current.name = el }} className="max-w-[10rem] truncate text-xs font-semibold uppercase tracking-widest text-white/60" />
+      </div>
+      {/* Arriving from the party game: black until the first picture is up. */}
+      <div className={`pointer-events-none absolute inset-0 z-20 bg-black transition-opacity duration-700 motion-reduce:transition-none ${veil ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true" />
+      {state === 'ready' && !moved && !handoff && <p className={`pointer-events-none absolute bottom-6 left-1/2 max-w-[calc(100%-2rem)] -translate-x-1/2 px-4 py-2 text-center text-sm ${chip}`}>{touch ? copy.hintTouch : copy.hint}</p>}
       {(state === 'unsupported' || state === 'failed') && (
         <p className="absolute inset-0 flex items-center justify-center px-6 text-center text-white/70" role="alert">{state === 'failed' ? copy.failed : copy.unsupported}</p>
       )}
