@@ -14,17 +14,18 @@
 //   tally/{round}/{key}      the final count for each answer, once the round's voting has closed
 //   finalists/{seat}         true for the seats that play round 2
 //   result          { key, text, count, winner } or { none: true }
-import { getApp } from 'firebase/app'
+import { getApps, initializeApp } from 'firebase/app'
 import { get, getDatabase, onDisconnect, onValue, ref, remove, serverTimestamp, set, update } from 'firebase/database'
-import './firebase.js'
-import { databaseURL } from '../data/firebase.js'
+import { databaseURL, firebaseConfig } from '../data/firebase.js'
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ' // no I or O
 export const CODE_LENGTH = 4
 export const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(CODE_LENGTH)), (n) => LETTERS[n % LETTERS.length]).join('')
 export const cleanCode = (text) => (text ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, CODE_LENGTH)
 
-const db = getDatabase(getApp(), databaseURL)
+// Nobody signs in here, so this starts Firebase without the sign-in parts (lib/firebase.js adds
+// those, on the pages that need them, to the same app).
+const db = getDatabase(getApps()[0] ?? initializeApp(firebaseConfig), databaseURL)
 const at = (code, path = '') => ref(db, `games/${code}${path && `/${path}`}`)
 
 // How far this device's clock is from the database's, kept up to date: now() is the shared time.

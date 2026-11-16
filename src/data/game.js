@@ -16,6 +16,20 @@ export const game = {
   },
   rounds: { 1: 'Round 1', 2: 'Final round' },
 
+  // Demo mode (/game/join?demo=1): try the game on one device. A phone is shown beside the big
+  // screen and two bots play along; these are the answers they pick from.
+  demo: {
+    open: 'Try it on one device (demo with two bots)',
+    label: 'Demo mode',
+    hint: 'Two bots are playing along. Play as yourself on the phone beside this screen, then press Start.',
+    screen: 'Big screen',
+    phone: 'Your phone',
+    lines: {
+      1: ['beep boop. i was charging.', 'i was busy being a placeholder', 'i was rebooting all night', 'ask my other bot. it will lie too.', 'error 404: whereabouts not found', 'i was in sleep mode. allegedly.'],
+      2: ['i am a bot. i cannot blink twice.', 'officer, define "driver"', 'the car was on autopilot. so was i.', 'i ran the red light in test mode', 'my licence is a jpeg', 'i only had 0s and 1s'],
+    },
+  },
+
   // The big screen.
   screen: {
     scan: 'Scan to join',

@@ -7,16 +7,17 @@
 //   pad:   true while a controller is connected (removed when its page closes)
 //   input: { x, y, a, b }: the stick, -1..1 each way (up is +y), and how many times A and X
 //          ("b") have been pressed (the screen acts when a count goes up)
-import { getApp } from 'firebase/app'
+import { getApps, initializeApp } from 'firebase/app'
 import { getDatabase, onDisconnect, onValue, ref, remove, serverTimestamp, set, update } from 'firebase/database'
-import './firebase.js'
-import { databaseURL } from '../data/firebase.js'
+import { databaseURL, firebaseConfig } from '../data/firebase.js'
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O or 1/I to mix up
 export const CODE_LENGTH = 5
 export const newCode = () => Array.from(crypto.getRandomValues(new Uint8Array(CODE_LENGTH)), (n) => ALPHABET[n % ALPHABET.length]).join('')
 
-const db = getDatabase(getApp(), databaseURL)
+// Nobody signs in here, so this starts Firebase without the sign-in parts (lib/firebase.js adds
+// those, on the pages that need them, to the same app).
+const db = getDatabase(getApps()[0] ?? initializeApp(firebaseConfig), databaseURL)
 const at = (code, path = '') => ref(db, `pads/${code}${path && `/${path}`}`)
 
 // The screen's side. onMessage({ t: 'stick', x, y } | { t: 'down', b: 'a' | 'x' }) for what the
