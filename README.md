@@ -460,6 +460,21 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ---
 
+## The /edit page
+
+`/edit` (owner only, "Edit" in the admin header) shows the **latest avenue video** editor, which runs in Google Cloud and is streamed to the page. The editor itself lives in the `latest-avenue-edit` repo; its `cloud/README.md` covers the server side, cost and limits.
+
+- **Setup:** deploy the service with `cloud/deploy.sh` in `latest-avenue-edit`, then put the address it prints in `editServiceUrl` in `src/data/edit.js`. Until then the page says the cloud editor hasn't been set up.
+- **How it connects:** `lib/editStream.js` asks the service for its state with the signed-in user's Firebase ID token (`getEditStatus`), which starts the editor if it is off (up to a minute), then opens the live view (`openEditStream`, the noVNC viewer, loaded only on this page). Mouse, touch and keyboard go to the editor. `callEditTool` calls the editor's tools (the ones its MCP bridge exposes) for later features.
+- **Security:** the route guard only hides the page. The service checks the token itself on every request and only answers for the user ID in `ownerUid`; nothing runs for anyone else. The token is sent in a header or the WebSocket's protocol list, never in an address. Changing the owner means updating the service's allowed IDs too (`OWNER_UIDS=… cloud/deploy.sh`).
+- **Why it isn't proxied through this site:** Firebase Hosting can't pass WebSockets on, so the page (served from latestavenue.com) connects straight to the service's own address.
+- **Phones:** the picture is scaled to fit, with no sideways scrolling. **Keys** in the header shows on-screen keys (1–4, 7–0, no LUT, pass, arrows, apply) for the game view; it is on by default on touch screens. Tap the game view once first: its keys act on the pane the pointer was last over.
+- **Full screen** (wider screens) fills the display with the page.
+- The stream ends when the sign-in token expires (within the hour) and the page reconnects by itself with a fresh one. The editor saves the project when the connection closes.
+- Text is in `data/edit.js`. Tested against the editor's container with test certificates, on a desktop and a phone-sized screen; **not yet tested against a deployed service or a real sign-in**.
+
+---
+
 ## Analytics
 
 `/analytics` (owner only, "Analytics" in the admin header) shows the Meta Ads account's numbers at a glance. The layout follows Sam's earlier intellijend "Console" demo: filters, a big area chart with a metric dropdown, and a "Top" list that opens a detail view with a back button.

@@ -8,6 +8,7 @@ const adminNav = [
   { label: 'Drive', to: '/admin/drive' },
   { label: 'Campaigns', to: '/admin/campaigns' },
   { label: 'Analytics', to: '/analytics' },
+  { label: 'Edit', to: '/edit' },
   { label: 'Admin', to: '/admin/team' },
   // The team portal, as team members see it.
   { label: 'Team', to: '/team' },
