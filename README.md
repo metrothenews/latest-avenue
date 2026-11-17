@@ -662,7 +662,7 @@ The app is `1761272091762214` (`facebookAppId`), a **Business**-type app with **
 
 ## Hosting
 
-The site is on **Firebase Hosting** in the `latest-avenue-app` project (owned by metrothenews@gmail.com; a personal Google account is also an Owner), at https://latestavenue.com, with `www` redirecting to it. Also reachable at https://latest-avenue-app.web.app.
+The site is on **Firebase Hosting** in the `latest-avenue-app` project (owned by metrothenews@gmail.com; a second personal Google account is also an Owner), at https://latestavenue.com, with `www` redirecting to it. Also reachable at https://latest-avenue-app.web.app.
 
 **Deploy** (manual; needs the Firebase CLI signed in to an account with access):
 
@@ -752,7 +752,7 @@ Features and technical:
 - [x] Set up git
 - [x] Hosted on Firebase Hosting (see Hosting)
 - [ ] Optional: deploy automatically on push to `main` (`firebase init hosting:github`); for now deploys are manual
-- [ ] After latestavenue.com is confirmed working, optionally remove a personal Google account from the Firebase project (metrothenews@gmail.com is Owner since 2026-10-31)
+- [ ] After latestavenue.com is confirmed working, optionally remove the second personal Google account from the Firebase project (metrothenews@gmail.com is Owner since 2026-10-31)
 
 ---
 
