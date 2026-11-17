@@ -1,5 +1,22 @@
 # latest avenue — website
 
+**The public site and internal operations platform for an independent record label.** Live at [latestavenue.com](https://latestavenue.com).
+
+From the outside it's a minimal label homepage. Behind the login, it's the tool the team actually runs releases on:
+
+- **Meta campaign builder:** builds ad campaigns from a template and a Google Drive folder of creative, validated against the Graph API before anything is created. A companion CLI (`npm run meta`) can validate but is structurally unable to spend money.
+- **Analytics:** Meta Ads results at a glance.
+- **Team portal:** a team list, assignments, real-time messaging and **note**, a collaborative board editor (TipTap) with link sharing.
+- **Drive browser:** searchable, read-only view of the label's Google Drive, which feeds the campaign builder.
+- **Interactive experiences:** a 360° `/experience` view steered by a phone acting as a controller (QR code, Firebase Realtime Database), and **ALIBI.EXE**, a TV-plus-phones party game.
+- **Security model:** Firebase Google sign-in, with owner, team and crew roles enforced in Firestore security rules, not just in the UI. The admin code is lazy-loaded and kept out of the public bundle.
+
+**Stack:** React 18 · Vite · Tailwind CSS · React Router · Firebase (Auth, Firestore, Realtime Database, Hosting) · Meta Graph API · Google Drive API
+
+Built with heavy use of Claude Code as a pair programmer: I set the product direction, architecture and review, and the commit history shows the collaboration openly.
+
+---
+
 Website for **latest avenue**, an independent hip-hop record label founded by **Sam Rooker**. The flagship artist is **Metro The News**.
 
 React 18 + Vite 5 + Tailwind CSS 3 + React Router 6, plain JavaScript (no TypeScript). There is **no server of our own**. The public site is a minimal homepage (headline, login link, Metro The News' Spotify player) plus contact and legal pages, and an **owner-only admin area** (`/login` → `/admin`) uses Firebase Google sign-in, restricted to Sam's account (see [Owner login](#owner-login)).
