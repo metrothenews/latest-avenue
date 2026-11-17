@@ -1,9 +1,10 @@
 # latest avenue — website
 
-**The public site and internal operations platform for an independent record label.** Live at [latestavenue.com](https://latestavenue.com).
+**A brand system in production: the public site and internal operations platform for an independent record label, designed and built end to end.** Live at [latestavenue.com](https://latestavenue.com).
 
 From the outside it's a minimal label homepage. Behind the login, it's the tool the team actually runs releases on:
 
+- **A documented design system:** one visual language (dark frosted glass, restrained accents, defined typography and components) written down and applied on every page and screen size. See [Design system](#design-system).
 - **Meta campaign builder:** builds ad campaigns from a template and a Google Drive folder of creative, validated against the Graph API before anything is created. A companion CLI (`npm run meta`) can validate but is structurally unable to spend money.
 - **Analytics:** Meta Ads results at a glance.
 - **Team portal:** a team list, assignments, real-time messaging and **note**, a collaborative board editor (TipTap) with link sharing.
