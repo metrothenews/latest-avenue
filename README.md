@@ -13,6 +13,15 @@ From the outside it's a minimal label homepage. Behind the login, it's the tool 
 
 **Stack:** React 18 · Vite · Tailwind CSS · React Router · Firebase (Auth, Firestore, Realtime Database, Hosting) · Meta Graph API · Google Drive API
 
+### Applications at scale
+
+- **A vertical operating system for creator businesses.** Independent labels, artists and small agencies run on the same handful of jobs: launch ad campaigns, read results, coordinate a team, share files. This is those jobs in one product, built and used in production by a real label.
+- **Guardrailed automation over ad spend.** The campaign builder validates everything against Meta's API before creating it, and the CLI is structurally unable to spend money. That's the safety model an AI agent needs before it's trusted with a budget.
+- **AI-ready data layer.** Every database read and write is a small named function in `src/lib/`, never inline in the UI, so each one can be exposed as an MCP tool with almost no new code. The site is built so an assistant can operate it later.
+- **Real-time, multi-device interaction.** The phone-as-controller experience and the party game are low-latency state sync across devices, the same primitive behind live, shared and second-screen products.
+
+**What it demonstrates:** full-stack product ownership from design to deploy, third-party API integration (Meta Graph, Google Drive), role-based security rules, real-time sync, shipping with AI coding tools.
+
 Built with heavy use of Claude Code as a pair programmer: I set the product direction, architecture and review, and the commit history shows the collaboration openly.
 
 ---
