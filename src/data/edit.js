@@ -2,9 +2,11 @@
 // The editor's compute only runs while someone is connected, and its gateway checks the
 // signed-in account on the server (see README → "The /edit page").
 
-// Address of the editor's gateway (the Cloud Run service). Printed by `cloud/deploy.sh` in the
-// latest-avenue-edit repo. It isn't secret: nothing there answers without the owner's sign-in.
-// Empty until the service has been deployed; the page says so.
+// Address of the editor's gateway: wherever the editor runs. Either the Cloud Run service
+// (printed by `cloud/deploy.sh` in the latest-avenue-edit repo) or your own PC acting as the
+// server (printed by `cloud/pc/install.ps1` there). It must start with https://.
+// It isn't secret: nothing there answers without the owner's sign-in.
+// Empty until one of them has been set up; the page says so.
 export const editServiceUrl = ''
 
 export const edit = {
@@ -16,7 +18,7 @@ export const edit = {
   reconnect: 'Reconnect',
   status: {
     notDeployed: 'The cloud editor hasn’t been set up yet.',
-    notDeployedHelp: 'Deploy it with cloud/deploy.sh in the latest-avenue-edit repo, then put the address it prints in editServiceUrl in src/data/edit.js.',
+    notDeployedHelp: 'Set it up from the latest-avenue-edit repo (cloud/deploy.sh for Google Cloud, cloud/pc/install.ps1 for your own PC), then put the address it prints in editServiceUrl in src/data/edit.js.',
     starting: 'Starting the editor…',
     startingHelp: 'It is switched off when nobody is using it, so the first connection takes up to a minute.',
     connecting: 'Connecting…',
