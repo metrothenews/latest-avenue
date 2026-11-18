@@ -77,7 +77,7 @@ export default function App() {
             {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in TeamAccess). */}
             {/* latest avenue note: boards the team edits; shared boards are readable by anyone with the link. */}
             {/* Crew: sign-in for people listed under Crew at /admin/team, then their welcome, then the boards (read-only). */}
-            {/* Team sign-up: anyone can join with Google; the owner can remove them at /admin/team. */}
+            {/* Team sign-up: anyone can ask to join with Google; the owner approves at /admin/team. */}
             <Route path="/team/join" element={<TeamJoin />} />
             <Route path="/team/crew" element={<CrewLogin />} />
             <Route path="/team/note/welcome" element={<CrewWelcome />} />
