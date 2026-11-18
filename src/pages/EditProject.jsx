@@ -5,9 +5,8 @@ import Button from '../components/ui/Button.jsx'
 import { useAuth } from '../components/auth/AuthProvider.jsx'
 import { editFlow as copy } from '../data/editFlow.js'
 import { editConfigured, getEditStatus } from '../lib/editStream.js'
-import { getProject } from '../lib/editProject.js'
+import { loadLocalProject, saveLocalProject } from '../lib/editProject.js'
 import { clearDriveToken, connectDrive, getDriveToken } from '../lib/driveAuth.js'
-import { ToolError, Status } from '../components/edit/parts.jsx'
 import StartStep from '../components/edit/StartStep.jsx'
 import FootageStep from '../components/edit/FootageStep.jsx'
 import ScriptStep from '../components/edit/ScriptStep.jsx'
@@ -17,17 +16,17 @@ import ExportStep, { SequencerStep } from '../components/edit/ExportStep.jsx'
 
 const START_TIMEOUT_MS = 120000
 const RETRY_MS = 2500
-const POLL_MS = 3000
 
-// Which steps can be opened, given what the editor has done so far.
+// Which steps can be opened, given how far the project got.
 function reachable(p) {
+  const built = p?.assembly?.state === 'done'
   return {
     footage: Boolean(p),
     script: p?.footage?.state === 'ready',
-    assembly: p?.script?.state === 'ready',
-    editing: p?.assembly?.state === 'done',
+    assembly: p?.footage?.state === 'ready' && Boolean(p?.script),
+    editing: built,
     sequencer: Boolean(p),
-    export: Boolean(p),
+    export: built,
   }
 }
 
@@ -35,13 +34,10 @@ function reachable(p) {
 function nextStep(p) {
   if (!p) return 'start'
   if (p.footage?.state !== 'ready') return 'footage'
-  if (p.script?.state !== 'ready') return 'script'
+  if (!p.script) return 'script'
   if (p.assembly?.state !== 'done') return 'assembly'
   return 'editing'
 }
-
-const working = (p) =>
-  p && (p.footage?.state === 'reading' || p.script?.state === 'reading' || p.assembly?.state === 'running' || p.export?.state === 'running')
 
 function StepBar({ step, open, onGo }) {
   const steps = copy.steps
@@ -81,24 +77,23 @@ function StepBar({ step, open, onGo }) {
 export default function EditProject() {
   const { user } = useAuth()
   const [editor, setEditor] = useState(editConfigured ? 'starting' : 'notDeployed')
-  const [project, setProject] = useState(undefined) // undefined: not loaded yet; null: none
-  const [loadError, setLoadError] = useState(null)
-  const [view, setView] = useState(null)            // the step showing; null until the project loads
+  const [project, setProject] = useState(() => loadLocalProject(user.uid))
+  const [view, setView] = useState(() => nextStep(loadLocalProject(user.uid))) // the step showing
   const [driveToken, setDriveToken] = useState(getDriveToken)
   const run = useRef(0)
 
   const call = useCallback(async (fn, ...args) => fn(await user.getIdToken(), ...args), [user])
 
-  const load = useCallback(async () => {
-    try {
-      setProject(await call(getProject))
-      setLoadError(null)
-    } catch (err) {
-      setLoadError(err)
-    }
-  }, [call])
+  // Merges a change into the project record and remembers it in this browser.
+  const update = useCallback((patch) => {
+    setProject((p) => {
+      const next = patch === null ? null : { ...p, ...patch }
+      saveLocalProject(user.uid, next)
+      return next
+    })
+  }, [user])
 
-  // Wake the editor (it's off when unused), then load its project.
+  // Wake the editor (it's off when unused). Steps that need it wait until it's up.
   const wake = useCallback(async () => {
     if (!editConfigured) return
     const mine = ++run.current
@@ -118,39 +113,28 @@ export default function EditProject() {
       if (mine !== run.current) return
     }
     setEditor('ready')
-    load()
-  }, [user, load])
+  }, [user])
 
   useEffect(() => {
     wake()
     return () => { run.current++ }
   }, [wake])
 
-  // While the editor is working on something, check on it every few seconds.
-  useEffect(() => {
-    if (!working(project)) return
-    const t = setInterval(load, POLL_MS)
-    return () => clearInterval(t)
-  }, [project, load])
-
   const drive = {
     token: driveToken,
-    connect: async () => setDriveToken(await connectDrive()),
+    connect: async () => {
+      const t = await connectDrive()
+      setDriveToken(t)
+      return t
+    },
     expire: () => { clearDriveToken(); setDriveToken(null) },
   }
 
-  // Land on the first unfinished step, then stay on whatever step is showing until the person
-  // moves on (so a step's "done" summary isn't skipped when the editor finishes).
-  useEffect(() => {
-    if (view == null && project !== undefined) setView(nextStep(project))
-  }, [view, project])
-
   const open = reachable(project)
-  const step = view && (view === 'start' || open[view]) ? view : nextStep(project)
+  const step = view === 'start' || open[view] ? view : nextStep(project)
   const go = (id) => { setView(id); window.scrollTo(0, 0) }
-  const onProject = (p) => { if (p && typeof p === 'object') setProject(p) }
   const blocked = editor !== 'ready'
-  const props = { project, call, onProject, drive, blocked }
+  const props = { project, call, update, drive, blocked }
 
   const editorNote = {
     starting: copy.editor.starting,
@@ -183,29 +167,24 @@ export default function EditProject() {
       )}
 
       <main className="mx-auto max-w-3xl px-4 pb-16 pt-6">
-        {project !== undefined && step !== 'start' && <StepBar step={step} open={open} onGo={go} />}
-
-        {project === undefined && (
-          loadError
-            ? <ToolError error={loadError} onRetry={load} />
-            : editor === 'ready' && <Status>{copy.loading}</Status>
+        {step !== 'start' && <StepBar step={step} open={open} onGo={go} />}
+        {step === 'start' && (
+          <StartStep
+            project={project}
+            onStart={(p) => { update(null); update(p); go('footage') }}
+            onCarryOn={() => go(nextStep(project))}
+          />
         )}
-
-        {project !== undefined && (
-          <>
-            {step === 'start' && <StartStep {...props} onProject={(p) => { onProject(p); setView('footage') }} onCarryOn={() => setView(nextStep(project))} />}
-            {step === 'footage' && <FootageStep {...props} onNext={() => go('script')} />}
-            {step === 'script' && <ScriptStep {...props} onNext={() => go('assembly')} />}
-            {step === 'assembly' && <AssemblyStep {...props} onNext={() => go('editing')} />}
-            {step === 'editing' && <EditingStep {...props} onBack={() => go('script')} />}
-            {step === 'sequencer' && <SequencerStep />}
-            {step === 'export' && <ExportStep {...props} />}
-            {project && step !== 'start' && (
-              <p className="mt-8 text-center text-xs text-white/40">
-                {project.name} · <button type="button" className="min-h-11 underline-offset-2 hover:text-white/70 hover:underline" onClick={() => go('start')}>{copy.start.startNew}</button>
-              </p>
-            )}
-          </>
+        {step === 'footage' && <FootageStep {...props} onNext={() => go('script')} />}
+        {step === 'script' && <ScriptStep {...props} onNext={() => go('assembly')} />}
+        {step === 'assembly' && <AssemblyStep {...props} onNext={() => go('editing')} />}
+        {step === 'editing' && <EditingStep {...props} onBack={() => go('script')} />}
+        {step === 'sequencer' && <SequencerStep />}
+        {step === 'export' && <ExportStep {...props} />}
+        {project && step !== 'start' && (
+          <p className="mt-8 text-center text-xs text-white/40">
+            {project.name} · <button type="button" className="min-h-11 underline-offset-2 hover:text-white/70 hover:underline" onClick={() => go('start')}>{copy.start.startNew}</button>
+          </p>
         )}
       </main>
     </div>

@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { editFlow as copy } from '../../data/editFlow.js'
-import { startProject } from '../../lib/editProject.js'
 import Button from '../ui/Button.jsx'
 import { fieldClass } from '../ui/fieldStyles.js'
-import { Panel, ToolError, useAction } from './parts.jsx'
+import { Choice, Panel } from './parts.jsx'
 
-// No project yet, or the person asked to start over.
-export default function StartStep({ project, call, onProject, onCarryOn, blocked }) {
+const newId = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+
+// What are you making, and its name. Nothing is sent to the editor yet.
+export default function StartStep({ project, onStart, onCarryOn }) {
   const [name, setName] = useState('')
-  const { busy, error, act } = useAction()
+  const [kind, setKind] = useState('scripted')
   const create = (e) => {
     e.preventDefault()
-    act(async () => onProject(await call(startProject, { name: name.trim() })))
+    onStart({ id: newId(), name: name.trim(), kind, created: new Date().toISOString() })
   }
   return (
     <Panel title={copy.start.title} intro={copy.start.intro}>
@@ -23,7 +24,15 @@ export default function StartStep({ project, call, onProject, onCarryOn, blocked
         </div>
       )}
       <form onSubmit={create}>
-        <label htmlFor="edit-name" className="text-sm text-white/70">{copy.start.nameLabel}</label>
+        <fieldset>
+          <legend className="text-sm text-white/70">{copy.start.kindLabel}</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {copy.kinds.map((k) => (
+              <Choice key={k.id} title={k.label} help={k.help} selected={kind === k.id} onClick={() => setKind(k.id)} />
+            ))}
+          </div>
+        </fieldset>
+        <label htmlFor="edit-name" className="mt-6 block text-sm text-white/70">{copy.start.nameLabel}</label>
         <input
           id="edit-name"
           value={name}
@@ -35,12 +44,11 @@ export default function StartStep({ project, call, onProject, onCarryOn, blocked
         />
         {project && <p className="mt-2 text-xs text-white/50">{copy.start.keptNote}</p>}
         <div className="mt-4">
-          <Button type="submit" variant={project ? 'secondary' : 'primary'} className="min-h-11" disabled={busy || blocked || !name.trim()}>
+          <Button type="submit" variant={project ? 'secondary' : 'primary'} className="min-h-11" disabled={!name.trim()}>
             {project ? copy.start.startNew : copy.start.create}
           </Button>
         </div>
       </form>
-      <ToolError error={error} />
     </Panel>
   )
 }

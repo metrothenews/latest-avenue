@@ -1,166 +1,185 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { editFlow as copy } from '../../data/editFlow.js'
-import { getEditingScript, saveEditingScript, submitEditingScript } from '../../lib/editProject.js'
+import { chooseTake, editEditingScript, getEditingScript, layOutEditingScript, setLineCut } from '../../lib/editProject.js'
 import {
-  appendUnmatched, chooseTake, chosenTake, clock, cutLength, giveClip, moveLine, setOmitted, setText, trimTake,
+  clipName, clock, confidence, cutLength, moveLine, removeLine, rows, setText, soundReport, soundStatus, toText,
 } from '../../lib/editingScript.js'
 import Button from '../ui/Button.jsx'
 import { Panel, Status, ToolError, useAction } from './parts.jsx'
 import TakeSheet from './TakeSheet.jsx'
 
-const SAVE_DELAY_MS = 1500
-const HISTORY = 50
+const HISTORY = 30
 const tool = 'min-h-11 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 hover:border-white/25 disabled:opacity-30'
+const chip = 'rounded-full border px-2 py-0.5 text-[11px]'
+const confidenceStyle = { strong: 'border-white/25 text-white/80', likely: 'border-white/15 text-white/60', guess: 'border-blue-300/40 text-blue-100/80', cover: 'border-white/10 text-white/50' }
+const soundStyle = { synced: 'border-white/15 text-white/60', camera: 'border-white/15 text-white/50', unsynced: 'border-blue-300/40 text-blue-100/80', silent: 'border-white/10 text-white/40' }
 
-// A textarea that grows with its text, so the script reads as one document.
-function AutoText({ value, onChange, onFocus, className, label }) {
+// A textarea that grows with its text. Changes are sent when it loses focus.
+function AutoText({ value, onCommit, className, label, disabled }) {
+  const [draft, setDraft] = useState(value)
   const ref = useRef(null)
+  useEffect(() => setDraft(value), [value])
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }, [value])
+  }, [draft])
   return (
     <textarea
       ref={ref}
       rows={1}
-      value={value}
+      value={draft}
       aria-label={label}
-      onFocus={onFocus}
-      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft.trim() && draft !== value && onCommit(draft.replace(/\s+/g, ' ').trim())}
       className={`block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-0.5 font-mono text-[15px] leading-relaxed text-white focus:border-white/20 focus:bg-white/[0.04] focus:outline-none ${className}`}
     />
   )
 }
 
-function Line({ line, index, count, onChange, onFocusText, onOpen }) {
-  const take = chosenTake(line)
+function Line({ doc, line, first, last, busy, onOp, onOpen }) {
+  const cut = line.cut
   const takes = line.takes ?? []
-  const n = takes.findIndex((t) => t.id === line.chosen) + 1
-  const text = (cls, label) => <AutoText value={line.text ?? ''} label={label} className={cls} onFocus={onFocusText} onChange={(v) => onChange(setText, v)} />
+  const conf = confidence(line)
+  const sound = cut ? soundStatus(doc, cut.clip) : null
+  const text = (cls, label) => <AutoText value={line.text ?? ''} label={label} className={cls} disabled={busy} onCommit={(v) => onOp(setText, v)} />
+
+  if (line.type === 'heading') {
+    return <h3 className="border-b border-white/5 px-1 pb-2 pt-6 font-mono text-[15px] font-bold uppercase first:pt-2">{line.text}</h3>
+  }
   return (
-    <article className={`border-b border-white/5 py-3 last:border-0 ${line.omitted ? 'opacity-50' : ''}`}>
-      {line.type === 'heading' && text('font-bold uppercase', 'Scene heading')}
-      {line.type === 'action' && text('', 'Action')}
-      {line.type === 'transition' && text('text-right uppercase', 'Transition')}
+    <article className="border-b border-white/5 py-3 last:border-0">
+      {line.type === 'action' && text('', copy.editing.editText)}
+      {line.type === 'transition' && text('text-right uppercase', copy.editing.editText)}
       {line.type === 'dialogue' && (
         <div className="px-[6%] sm:px-[18%]">
-          <p className="text-center font-mono text-[15px] uppercase text-white/90">{line.character}</p>
-          {line.parenthetical && <p className="text-center font-mono text-sm text-white/60">({line.parenthetical.replace(/^\(|\)$/g, '')})</p>}
-          {text('', `${copy.editing.speaker}: ${line.character ?? ''}`)}
+          <p className="text-center font-mono text-[15px] uppercase text-white/90">{line.character}{(line.extensions ?? []).map((e) => ` (${e})`).join('')}</p>
+          {(line.parentheticals ?? []).map((p, i) => <p key={i} className="text-center font-mono text-sm text-white/60">{p.text}</p>)}
+          {text('', `${copy.editing.editText}: ${line.character ?? ''}`)}
         </div>
       )}
-      {line.omitted && <p className="mt-1 px-1 text-xs uppercase tracking-wide text-white/50">{copy.editing.cutNote}</p>}
 
-      {line.type !== 'heading' && (
-        take ? (
-          <button type="button" onClick={() => onOpen(line, false)} className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-xs hover:border-white/25">
-            {take.thumb && <img src={take.thumb} alt="" className="h-9 w-14 shrink-0 rounded object-cover" />}
+      {line.type !== 'transition' && (
+        cut ? (
+          <button type="button" disabled={busy} onClick={() => onOpen(line.id)} className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-xs hover:border-white/25 disabled:opacity-60">
             <span className="min-w-0 flex-1">
-              <span className="font-semibold text-white/80">{copy.editing.takeOf(n, takes.length)}</span>
-              <span className="text-white/50"> · {take.name}</span>
-              <span className="block text-white/50">{clock(take.in_s)} → {clock(take.out_s)} ({clock(take.out_s - take.in_s)})</span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                {conf && <span className={`${chip} ${confidenceStyle[conf]}`}>{copy.editing.confidence[conf]}</span>}
+                {sound && <span className={`${chip} ${soundStyle[sound.status]}`}>{sound.status === 'synced' ? copy.editing.sound.synced(sound.method) : copy.editing.sound[sound.status]}</span>}
+              </span>
+              <span className="mt-1 block">
+                {takes.length > 0 && line.take != null && <span className="font-semibold text-white/80">{copy.editing.takeOf(line.take + 1, takes.length)} · </span>}
+                <span className="break-all text-white/50">{clipName(doc, cut.clip)}</span>
+              </span>
+              <span className="block text-white/50">{clock(cut.in)} → {clock(cut.out)} ({clock(cut.out - cut.in)})</span>
             </span>
-            <span className="shrink-0 text-blue-100/70">{copy.editing.changeTake}</span>
+            {takes.length > 0 && <span className="shrink-0 text-blue-100/70">{copy.editing.changeTake}</span>}
           </button>
         ) : (
-          <div className="mt-2 flex flex-wrap items-center gap-2 px-1 text-xs text-white/50">
-            <span>{copy.editing.noFootage}</span>
-            <button type="button" className={tool} onClick={() => onOpen(line, true)}>{copy.editing.giveClip}</button>
-          </div>
+          line.type === 'dialogue' && <p className="mt-2 px-1 text-xs text-white/50">{copy.editing.noFootage}</p>
         )
       )}
 
       <div className="mt-2 flex flex-wrap gap-2 px-1">
-        <button type="button" className={tool} disabled={index === 0} onClick={() => onChange(moveLine, -1)} aria-label={`${copy.editing.up}: line ${index + 1}`}>↑ {copy.editing.up}</button>
-        <button type="button" className={tool} disabled={index === count - 1} onClick={() => onChange(moveLine, 1)} aria-label={`${copy.editing.down}: line ${index + 1}`}>↓ {copy.editing.down}</button>
-        <button type="button" className={tool} onClick={() => onChange(setOmitted, !line.omitted)}>{line.omitted ? copy.editing.restore : copy.editing.cut}</button>
+        <button type="button" className={tool} disabled={busy || first} onClick={() => onOp(moveLine, -1)} aria-label={`${copy.editing.up}: ${line.id}`}>↑ {copy.editing.up}</button>
+        <button type="button" className={tool} disabled={busy || last} onClick={() => onOp(moveLine, 1)} aria-label={`${copy.editing.down}: ${line.id}`}>↓ {copy.editing.down}</button>
+        <button type="button" className={tool} disabled={busy} onClick={() => onOp(removeLine)}>{copy.editing.remove}</button>
       </div>
     </article>
   )
 }
 
-// Step 4: the editing script, edited like a screenplay. Saves by itself after each change.
-export default function EditingStep({ call, onBack, blocked }) {
+function SoundPanel({ doc }) {
+  const report = soundReport(doc)
+  if (!report.length) return null
+  const problems = report.filter((c) => c.status !== 'synced')
+  return (
+    <Panel title={copy.editing.soundTitle} intro={copy.editing.soundIntro}>
+      {!problems.length && <p className="text-sm text-white/60">{copy.editing.soundAll(report.length)}</p>}
+      {problems.length > 0 && (
+        <>
+          <ul className="space-y-2">
+            {problems.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
+                <span className="min-w-0 break-all">{c.name}</span>
+                <span className={`${chip} ${soundStyle[c.status]}`}>{copy.editing.sound[c.status]}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-white/50">{copy.editing.soundFix}</p>
+        </>
+      )}
+    </Panel>
+  )
+}
+
+// Step 4: the editing script, edited like a screenplay. Each change is saved in the editor
+// straight away, and the page shows the editor's result.
+export default function EditingStep({ project, call, blocked, onBack }) {
   const navigate = useNavigate()
-  const [script, setScript] = useState(null)
-  const [save, setSave] = useState('saved') // saved | dirty | saving | failed
-  const [sheet, setSheet] = useState(null)  // { id, clips }
+  const path = project.assembly.output
+  const [doc, setDoc] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const [sheet, setSheet] = useState(null) // line id
   const history = useRef([])
-  const latest = useRef(null)
-  const timer = useRef(null)
   const load = useAction()
   const submit = useAction()
 
-  const fetchScript = () =>
-    load.act(async () => {
-      const s = await call(getEditingScript)
-      latest.current = s
-      setScript(s)
-    })
-  useEffect(() => { fetchScript() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const fetchDoc = () => load.act(async () => setDoc(await call(getEditingScript, path)))
+  useEffect(() => { fetchDoc() }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const flush = useCallback(async () => {
-    clearTimeout(timer.current)
-    if (!latest.current) return
-    setSave('saving')
+  // Runs one change in the editor, then reloads the document from it.
+  const change = async (fn, optimistic) => {
+    if (optimistic) setDoc(optimistic)
+    setSaving(true)
+    setSaveError(null)
     try {
-      await call(saveEditingScript, latest.current)
-      setSave((v) => (v === 'saving' ? 'saved' : v))
+      await fn()
+      setDoc(await call(getEditingScript, path))
     } catch (err) {
-      setSave('failed')
-      throw err
+      setSaveError(err)
+      setDoc(await call(getEditingScript, path).catch(() => doc))
+    } finally {
+      setSaving(false)
     }
-  }, [call])
-
-  const update = (next, remember = true) => {
-    if (next === latest.current) return
-    if (remember) history.current = [...history.current, latest.current].slice(-HISTORY)
-    latest.current = next
-    setScript(next)
-    setSave('dirty')
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => flush().catch(() => {}), SAVE_DELAY_MS)
   }
-  useEffect(() => () => {
-    // Leaving the step: save what's pending.
-    if (timer.current) {
-      clearTimeout(timer.current)
-      if (latest.current) call(saveEditingScript, latest.current).catch(() => {})
-    }
-  }, [call])
-
+  const textChange = (next) => {
+    history.current = [...history.current, toText(doc)].slice(-HISTORY)
+    change(() => call(editEditingScript, path, toText(next)), next)
+  }
   const undo = () => {
     const prev = history.current.pop()
-    if (prev) update(prev, false)
+    if (prev) change(() => call(editEditingScript, path, prev))
   }
 
   const onSubmit = () =>
     submit.act(async () => {
-      await flush()
-      await call(submitEditingScript)
+      await call(layOutEditingScript, path)
       navigate('/edit/sequencer')
     })
 
-  if (!script) {
+  if (!doc) {
     return (
       <Panel title={copy.editing.title}>
         {load.busy && <Status>{copy.loading}</Status>}
-        <ToolError error={load.error} onRetry={fetchScript} />
+        <ToolError error={load.error} onRetry={fetchDoc} />
       </Panel>
     )
   }
 
-  const lines = script.lines ?? []
-  const sheetLine = sheet && lines.find((l) => l.id === sheet.id)
-  const saveLabel = { saved: copy.editing.saved, dirty: copy.editing.unsaved, saving: copy.editing.saving, failed: copy.editing.saveFailed }[save]
+  const list = rows(doc)
+  const lines = list.filter((l) => l.type !== 'heading')
+  const sheetLine = sheet && lines.find((l) => l.id === sheet)
+  const busy = saving || blocked
 
   return (
     <div className="space-y-4">
-      <Panel title={script.title || copy.editing.title} intro={copy.editing.intro}>
-        <p className="text-sm text-white/60">{copy.editing.length(clock(cutLength(script)))}</p>
+      <Panel title={doc.title || copy.editing.title} intro={copy.editing.intro}>
+        <p className="text-sm text-white/60">{copy.editing.length(clock(cutLength(doc)))}</p>
         {!lines.length && (
           <div className="mt-4">
             <p className="font-semibold">{copy.editing.empty}</p>
@@ -168,54 +187,49 @@ export default function EditingStep({ call, onBack, blocked }) {
             <div className="mt-3"><Button variant="secondary" className="min-h-11" onClick={onBack}>{copy.script.change}</Button></div>
           </div>
         )}
-        <div className="mt-4">
-          {lines.map((l, i) => (
+        <div className="mt-2">
+          {list.map((l) => (
             <Line
               key={l.id}
+              doc={doc}
               line={l}
-              index={i}
-              count={lines.length}
-              onFocusText={() => { history.current = [...history.current, latest.current].slice(-HISTORY) }}
-              onChange={(fn, arg) => update(fn(latest.current, l.id, arg), fn !== setText)}
-              onOpen={(line, clips) => setSheet({ id: line.id, clips })}
+              first={l.id === lines[0]?.id}
+              last={l.id === lines.at(-1)?.id}
+              busy={busy}
+              onOp={(fn, arg) => textChange(fn(doc, l.id, arg))}
+              onOpen={setSheet}
             />
           ))}
         </div>
       </Panel>
 
+      <SoundPanel doc={doc} />
+
       <Panel title={copy.editing.unusedTitle} intro={copy.editing.unusedIntro}>
-        {!script.unmatched?.length && <p className="text-sm text-white/50">{copy.editing.unusedNone}</p>}
-        <ul className="space-y-2">
-          {(script.unmatched ?? []).map((c) => (
-            <li key={c.clip_id} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
-              {c.thumb && <img src={c.thumb} alt="" className="h-10 w-16 shrink-0 rounded object-cover" />}
-              <span className="min-w-0 flex-1 break-words">{c.name}</span>
-              <span className="text-white/50">{clock(c.clip_s)}</span>
-              <button type="button" className={tool} onClick={() => update(appendUnmatched(latest.current, c.clip_id, copy.editing.newLineText(c.name)))}>{copy.editing.addAtEnd}</button>
-            </li>
-          ))}
+        {!doc.unplaced?.length && <p className="text-sm text-white/50">{copy.editing.unusedNone}</p>}
+        <ul className="space-y-1">
+          {(doc.unplaced ?? []).map((id) => <li key={id} className="break-all text-sm text-white/70">{clipName(doc, id)}</li>)}
         </ul>
       </Panel>
 
       <div className="glass-bar sticky bottom-0 z-10 -mx-4 border-t px-4 py-3 sm:mx-0 sm:rounded-xl sm:border">
         <div className="flex flex-wrap items-center gap-2">
-          <span role="status" className="text-xs text-white/60">{saveLabel}</span>
-          {save === 'failed' && <button type="button" className={tool} onClick={() => flush().catch(() => {})}>{copy.editing.saveRetry}</button>}
-          <button type="button" className={tool} disabled={!history.current.length} onClick={undo}>{copy.editing.undo}</button>
-          <Button className="ml-auto min-h-11" disabled={submit.busy || blocked || !lines.length} onClick={onSubmit}>
+          <span role="status" className="text-xs text-white/60">{saving ? copy.editing.saving : saveError ? copy.editing.saveFailed : copy.editing.saved}</span>
+          <button type="button" className={tool} disabled={busy || !history.current.length} onClick={undo}>{copy.editing.undo}</button>
+          <Button className="ml-auto min-h-11" disabled={busy || submit.busy || !lines.length} onClick={onSubmit}>
             {submit.busy ? copy.editing.submitting : copy.editing.submit}
           </Button>
         </div>
-        <ToolError error={submit.error} />
+        <ToolError error={saveError ?? submit.error} />
       </div>
 
       <TakeSheet
+        doc={doc}
         line={sheetLine}
-        clips={sheet?.clips ? (script.unmatched ?? []) : null}
+        busy={saving}
         onClose={() => setSheet(null)}
-        onChoose={(takeId) => update(chooseTake(latest.current, sheet.id, takeId))}
-        onTrim={(takeId, t) => update(trimTake(latest.current, sheet.id, takeId, t))}
-        onGiveClip={(clipId) => { update(giveClip(latest.current, sheet.id, clipId)); setSheet({ id: sheet.id, clips: false }) }}
+        onChoose={(i) => change(() => call(chooseTake, path, sheet, i))}
+        onTrim={(a, b) => change(() => call(setLineCut, path, sheet, a, b))}
       />
     </div>
   )

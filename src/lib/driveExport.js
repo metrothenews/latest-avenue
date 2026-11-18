@@ -36,3 +36,27 @@ export async function connectDriveExport() {
   }
   return token
 }
+
+const FILES = 'https://www.googleapis.com/drive/v3/files'
+const FOLDER = 'application/vnd.google-apps.folder'
+
+// The id of the exports folder in My Drive, made by this site (drive.file can only see folders
+// it made), creating it the first time.
+export async function ensureExportFolder(token, name) {
+  const headers = { Authorization: `Bearer ${token}` }
+  const q = `name = '${name.replace(/'/g, "\\'")}' and mimeType = '${FOLDER}' and trashed = false`
+  const found = await fetch(`${FILES}?${new URLSearchParams({ q, fields: 'files(id)', pageSize: '1' })}`, { headers })
+  if (!found.ok) throw new Error(`Drive said no (${found.status}).`)
+  const id = (await found.json()).files?.[0]?.id
+  if (id) return id
+  const made = await fetch(`${FILES}?fields=id`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: FOLDER }),
+  })
+  if (!made.ok) throw new Error(`Drive said no (${made.status}).`)
+  return (await made.json()).id
+}
+
+// Link to a file in Drive.
+export const driveFileLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`

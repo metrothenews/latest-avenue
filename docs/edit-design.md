@@ -18,31 +18,40 @@ flow's header on every step, so nobody is forced through the steps to reach it.
 ## The flow
 
 ```
-Start ─▶ 1 Footage ─▶ 2 Script ─▶ 3 Build the cut ─▶ 4 Editing script ─▶ 5 Sequencer ─▶ 6 Export
+Start (what are you making?) ─▶ 1 Footage ─▶ 2 Script / song ─▶ 3 Build the cut ─▶ 4 Review the cut ─▶ 5 Sequencer ─▶ 6 Export
 ```
 
 A step bar at the top shows where you are. Finished steps can be tapped to go back to them.
-The page picks the step from the editor's project state, so a reload lands where you left off.
+The page lands on the first unfinished step, then stays on the step showing until the person
+moves on (so a step's "done" summary isn't skipped when the editor finishes in the background).
 
 | Step | What the person sees | Done when |
 |---|---|---|
-| Start | "Start a new edit" with a name field. If the editor already has a project: "Carry on with *name*" and "Start a new edit". | A project exists in the editor. |
-| 1 Footage | "Connect Google Drive" (read-only, the existing `connectDrive`), then the existing Drive folder search; pick the folder with the video, photos and audio. Then a summary from the editor (how many videos, audio files, photos, total length). | The editor has read the folder. |
-| 2 Script | Two choices: pick the script PDF from Drive, or upload one from the device. A third, quieter choice: "I don't have a script" (the editor builds a rough one from the footage). A muted "Script supervisor notes: later" line holds that step's place without doing anything. | The editor has read the script, or was told there is none. |
-| 3 Build the cut | One button, "Build my assembly cut", then a progress panel: which stage (reading footage, transcribing, recognising shots, matching to the script, putting it in order), a bar if the editor reports a fraction, and "You can leave this page; it keeps going." | The editor says the assembly is done. |
-| 4 Editing script | The editing script laid out like a screenplay (scene headings, action, character and dialogue). Under each shot line, its take: "Take 2 of 4 · file · 0:12.4 → 0:18.9". **Change take** opens the alternatives (best match first) and in/out trim. Each line has **Up**, **Down**, **Cut** (struck through, can be restored). Text can be edited in place; the take stays bound to the line. Lines with no footage say so and can be given a clip from **Unused footage** at the end. Saves by itself a moment after each change; **Undo** steps back. | The person presses **Open in the sequencer**. |
-| 5 Sequencer | "Laying out your cut…" while the editor builds the timeline, then it goes to `/edit/sequencer`, the existing live view, with quick crop / colour in the game view as now. | The cut is on the timeline. |
-| 6 Export | Two choices: **Video file** (rendered MP4) or **Sequence for another editor** (OpenTimelineIO). Needs one more Google permission, "Save to Drive" (`drive.file`: only files this site creates), asked only here. Progress, then a link to the file in Drive. | The file is in Drive. |
+| Start | **What are you making?**: *From a script* (short film, ad, scripted monologue, social video), *Music video*, or *Interview or documentary*, plus a name. If an edit is in progress: **Carry on** or **Start a new edit**. | A project record exists (this browser). |
+| 1 Footage | "Connect Google Drive" (read-only, the existing `connectDrive`), then the existing Drive folder search. The editor copies the folder (a job; its progress lines show), then checks the files: how many videos, sound files, photos, total length, unreadable files. Sound from a separate recorder goes in the same folder. | The editor has the folder and has read it. |
+| 2 Script | *From a script*: the script files found in the footage folder (PDF, Fountain, text), **Check the folder again** after adding one in Drive, **Upload a PDF from this device**, or **I don't have a script**. *Interview*: the same, with "no script" first and the title "A script? (optional)". *Music video*: choose the **song** from the sound files and optional **lyrics**. A muted "Script supervisor notes: later" line holds that step's place. | A script was read, or there is none (music: a song is chosen). |
+| 3 Build the cut | **Build my assembly cut**, then the editor's own progress lines ("synced A001_C003.mov to ZOOM0001.wav (timecode)", "heard …") and the time so far. "You can leave this page." Then: "2 of 3 lines have footage · 1 clip not used". | The job is done. |
+| 4 Review the cut | The editing script laid out like a screenplay. Under each line, its footage: a **confidence label** (*Strong match* / *Likely match* / *Best guess* / *Picked by look* for cover shots), a **sound label** (*Synced by timecode/waveform/clap*, *Camera sound only*, *Couldn't sync*, *No sound*), the take ("Take 2 of 3 · file"), in → out. Tapping it (**Swap or trim**) lists every ranked take with its match % and what was heard, and trims in/out. Each line has **Up**, **Down**, **Remove**; its words can be edited in place. A **Sound** panel lists clips that aren't synced; **Unused footage** lists clips the editor couldn't place. **Undo** steps back through moves, removals and rewording. | **Open in the sequencer**. |
+| 5 Sequencer | The cut is laid out on the timeline, then `/edit/sequencer`, the existing live view, with quick crop / colour in the game view as now. | The cut is on the timeline. |
+| 6 Export | **Video file**, **DaVinci Resolve**, **Premiere Pro** or **Final Cut Pro**. One more Google permission, "Save to Drive" (`drive.file`: only files this site creates), asked only here. Making the file, then saving to Drive (a job), then **Open in Drive**. | The file is in Drive. |
+
+Guesses made here (flag any that are wrong):
+- The confidence thresholds: *Strong* when the matcher's score is ≥ 0.8, *Likely* ≥ 0.5, *Best guess* below that or with no score.
+- Music videos: the editor has no song or lyrics input yet, so a music video is built like unscripted footage; the song and lyrics choices are kept for when it does. The page says so.
+- Export formats: Resolve gets OpenTimelineIO (`.otio`), Premiere gets FCP7 XML (`.xml`), Final Cut gets `.fcpxml`. The video is `render_video` of the timeline, so it includes the fine-tuning done in the sequencer.
+- Exports go to a Drive folder called "latest avenue exports" that the site creates.
+- Where the flow got to is remembered in this browser (localStorage), not on the editor, which has no project record. Starting on the desktop and carrying on from the phone means starting the steps again (the editor skips files already copied, so footage is quick the second time).
 
 ## States (every step)
 
-- **Editor starting** (it's switched off when unused): a slim bar, "Starting the editor… up to a minute". Buttons that need the editor wait; reading and Drive browsing still work.
+- **Editor starting** (it's switched off when unused): a slim bar, "Starting the editor… up to a minute". Buttons that need the editor wait; Drive browsing still works.
 - **Editor unreachable / denied**: the same bar with the honest reason and **Try again**. No fake data anywhere.
-- **Tool not built yet** (the editor answers "Unknown tool"): "This part of the editor isn't ready yet" in the step, and the sequencer stays one tap away. This is what Sam sees today, until the builder session ships the tools below.
-- **Empty**: no project → Start; Drive not connected → Connect; no folders found → the picker says so; editing script with no lines → "The editor didn't find any lines" with a link back to step 2.
-- **Loading**: plain text ("Reading your footage…"), no spinners or animation.
-- **Error from a step** (e.g. the PDF couldn't be read): the editor's message in the step, plus the action to retry or pick another file.
-- **Drive token expired** (an hour): "Your Drive connection ran out" with **Reconnect**.
+- **Tool not built yet** (the editor answers "Unknown tool"): "This part of the editor isn't ready yet" in the step, with the sequencer one tap away. Today that is only the PDF upload (`save_upload`, below).
+- **Job forgotten** (the editor restarted mid-job): "The editor restarted and lost track of this step. Start it again."
+- **Empty**: no project → Start; Drive not connected → Connect; no folders / no script files found → says so, with **Check the folder again**; editing script with no lines → "The editor didn't find any lines" and a way back to the script.
+- **Loading / working**: plain text and the editor's own progress lines; no spinners or animation.
+- **Error from a step**: the editor's message (it is written for the person) and the action to retry.
+- **Drive token expired** (an hour): "Your Drive connection ran out" with **Connect** again.
 
 ## Phone layout (about 390px)
 
@@ -52,85 +61,32 @@ The page picks the step from the editor's project state, so a reload lands where
 - **Change take** opens a sheet (the existing `Modal`) that fills the width; the takes are a list of large buttons; trim is two number fields with −/+ buttons.
 - The header keeps: logo, "edit" tag, editor status dot, **Sequencer**, **Admin**.
 
-## Editor tool contract (to align with the builder session)
+## Editor tool contract
 
-All calls go through `callEditTool(token, name, params)` (`src/lib/editStream.js`, the
-gateway's `POST /api/rpc`). The site's side is `src/lib/editProject.js`; every function there
-has a `TODO(tool name)` until the editor's names are confirmed. **Names and shapes below are
-proposals by this session** (guesses, not yet agreed). Times are seconds (floats); IDs are strings.
+The builder's contract is `cloud/TOOLS.md` in `latest-avenue-edit` (branch
+`claude/assembly-pipeline`, 2026-11-18). The site calls it through `callEditTool`
+(`src/lib/editStream.js`); one named function per tool in `src/lib/editProject.js`:
 
-| Site function | Tool (proposed) | Params | Returns |
-|---|---|---|---|
-| `getProject` | `project_status` | `{}` | `Project` or `null` when none |
-| `startProject` | `project_new` | `{ name }` | `Project`. The editor keeps (saves) the previous project. |
-| `setFootageFolder` | `footage_set_folder` | `{ drive_folder_id, drive_folder_name, drive_token }` | `Project` (footage `state: 'reading'`) |
-| `setScriptFromDrive` | `script_set` | `{ source: 'drive', drive_file_id, name, drive_token }` | `Project` |
-| `uploadScript` | `script_set` | `{ source: 'upload', name, pdf_base64 }` | `Project` |
-| `skipScript` | `script_set` | `{ source: 'none' }` | `Project` |
-| `startAssembly` | `assembly_start` | `{}` | `Project` (assembly `state: 'running'`); returns at once, work continues |
-| `getEditingScript` | `editing_script_get` | `{}` | `EditingScript` |
-| `saveEditingScript` | `editing_script_save` | `{ editing_script }` | `{ saved_at }` |
-| `submitEditingScript` | `editing_script_submit` | `{}` | `{ ok: true, strips }` once the sequencer has the cut |
-| `startExport` | `export_start` | `{ kind: 'video' \| 'sequence', drive_token, drive_folder_name }` | `Project` (export `state: 'running'`) |
+| Step | Site function | Editor tool |
+|---|---|---|
+| 1 | `fetchDriveFolder`, `jobStatus`, `probeMedia` | `fetch_drive_folder` (job), `job_status`, `probe_media` |
+| 2 | `readScreenplay` | `read_screenplay` |
+| 2 | `uploadScript` | **`save_upload` — not in the contract yet** (proposed below) |
+| 3 | `startAssembly`, `jobStatus` | `start_assembly` (job) |
+| 4 | `getEditingScript` | `get_editing_script` (`format: 'json'`) |
+| 4 | `editEditingScript` | `edit_editing_script`: moves, removals and rewording, sent as screenplay text |
+| 4 | `chooseTake`, `setLineCut` | `choose_take`, `set_line_cut` |
+| 5 | `layOutEditingScript` | `lay_out_editing_script` |
+| 6 | `renderVideo`, `exportSequence`, `uploadToDrive` | `render_video`, `export_sequence`, `upload_to_drive` (job) |
 
-`drive_token` is the user's Google access token (read-only for footage and script,
-`drive.file` for export). It lasts an hour; the editor should copy what it needs straight
-away rather than keep the token. Open question for the builder: if copying a large folder
-takes longer, the editor needs its own Drive access or a refresh path.
+How the page uses them:
+- **Files.** The footage is copied to `drive/<folder id>` in the editor's media folder (the `folder` in the fetch job's result). The project's own files live in a hidden `.latest-avenue/` folder inside it, which the editor's footage scan skips: the editing script is `<that>/<project id>.edit.json`, exports are `<that>/<name>-<format>.<ext>`.
+- **Text round trip.** `toText` in `src/lib/editingScript.js` mirrors the editor's `editing_script.to_text` exactly (checked on 2026-11-18: identical output on a sample with action, dialogue, extensions, parentheticals, a transition and a forced heading). A move, removal or rewording changes the document in the page, sends the whole text, then reloads the document from the editor, so the page always shows the editor's result (re-trims, new line IDs).
+- **Sound status** comes from `media[clip].sound` (synced to a recorder file, with `method`) and `audio_tracks`; "Couldn't sync" means there are recorder files but this clip matched none and has no sound of its own.
+- **Drive.** `fetch_drive_folder` gets the read-only token from `src/lib/driveAuth.js`. `upload_to_drive` gets a `drive.file` token from `src/lib/driveExport.js` and a folder ID the site creates with that token (`ensureExportFolder`), because `drive.file` can only write into folders the app made.
 
-Uploads go inside the JSON-RPC body, so a PDF must be under about 700 KB (the gateway caps a
-request at 1 MB). The page says so and points to the Drive choice for larger files. A
-`POST /api/upload` on the gateway would lift that.
-
-```js
-Project = {
-  id, name, updated_at,                       // ISO time
-  footage: null | {
-    folder_id, folder_name,
-    state: 'reading' | 'ready' | 'failed', message,
-    counts: { video, audio, photo }, total_s,
-  },
-  script: null | {
-    source: 'drive' | 'upload' | 'none', name,
-    state: 'reading' | 'ready' | 'failed', message,
-    scenes, lines,                            // counts, when read
-  },
-  assembly: {
-    state: 'idle' | 'running' | 'done' | 'failed', message,
-    stage: 'inventory' | 'transcribe' | 'recognise' | 'match' | 'order' | null,
-    progress: null | 0..1,
-  },
-  editing_script: null | { saved_at },
-  export: {
-    state: 'idle' | 'running' | 'done' | 'failed', message,
-    kind, progress: null | 0..1, drive_link,   // drive_link when done
-  },
-}
-
-EditingScript = {
-  version: 1, title, fps,
-  lines: [{                                   // flat list, in cut order
-    id,                                       // stable, from the script parser
-    type: 'heading' | 'action' | 'dialogue' | 'transition',
-    text,                                     // the screenplay text (dialogue: the spoken words)
-    character, parenthetical,                 // dialogue only
-    omitted: false,                           // "Cut" in the page; kept so it can be restored
-    takes: [{                                 // ranked, best first; [] when not shot / headings
-      id, clip_id, name,                      // name = file name shown to the person
-      in_s, out_s,                            // chosen in/out inside the clip
-      clip_s,                                 // clip length, for trim limits
-      score,                                  // 0..1 match confidence, optional
-      thumb,                                  // optional small JPEG data: URI (no auth needed)
-      transcript,                             // optional, what was heard
-      slate: null, circled: null, notes: null // reserved for script supervisor notes (later)
-    }],
-    chosen,                                   // id of the take in use, or null
-  }],
-  unmatched: [{ clip_id, name, clip_s, thumb }], // footage no line uses
-}
-```
-
-Rules the page follows: a line's `takes` and `chosen` travel with it when it moves; editing
-`text` never changes footage; trimming changes `in_s`/`out_s` of that take only (clamped to
-`0..clip_s`, at least 0.1 s long); giving an unused clip to a line adds it as a take (in 0,
-out `clip_s`) and removes it from `unmatched`. Lines the page creates get IDs starting `web-`.
+Asks for the builder:
+1. **`save_upload { filepath, data_base64 } -> { filepath, bytes }`** so a script PDF can come from the phone or computer instead of Drive (the page caps it at 700 KB because the gateway takes 1 MB per request). Until it exists the page says that part isn't ready.
+2. **Song and lyrics for music videos**: `start_assembly` could take `song` and `lyrics` paths (the lyrics aligner in `tools/vse_lyrics` already exists). The page already asks for both.
+3. **Fixing sync by hand**: a tool to set or clear a clip's sound offset would let the Sound panel offer a fix; for now it says to line the sound up in the sequencer.
+4. Optional: a thumbnail per take (a small `data:` JPEG) for the swap list; `media[clip].shots[].thumbnail` is a path on the editor, which the browser can't load.

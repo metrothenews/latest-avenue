@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { jobStatus } from '../../lib/editProject.js'
 import { editFlow as copy } from '../../data/editFlow.js'
 import Button from '../ui/Button.jsx'
 
@@ -24,6 +25,7 @@ export function ToolError({ error, onRetry }) {
   else if (kind === 'unreachable') [title, body] = [copy.editor.unreachable, '']
   else if (kind === 'denied') [title, body] = [copy.editor.denied, '']
   else if (kind === 'drive') [title, body] = [error.message, '']
+  else if (kind === 'gone') [title, body] = [copy.gone, '']
   return (
     <div role="alert" className="mt-4 rounded-lg border border-white/15 bg-white/5 p-4 text-sm">
       <p className="font-semibold text-white">{title}</p>
@@ -89,3 +91,42 @@ export function useAction() {
 // A Drive token problem as a <ToolError>-shaped error.
 export const driveError = (err) =>
   Object.assign(new Error(err?.kind === 'auth' ? copy.footage.expired : (err?.message ?? String(err))), { kind: 'drive', auth: err?.kind === 'auth' })
+
+// Follows an editor background job (fetch_drive_folder, start_assembly, upload_to_drive) until it
+// ends, then calls onEnd(status) once. -> { status, error } (status: the latest job_status).
+export function useJob(call, job, onEnd) {
+  const [status, setStatus] = useState(null)
+  const [error, setError] = useState(null)
+  const end = useRef(onEnd)
+  end.current = onEnd
+  useEffect(() => {
+    if (!job) return undefined
+    let stop = false
+    let timer
+    setStatus(null)
+    setError(null)
+    const tick = async () => {
+      try {
+        const s = await call(jobStatus, job)
+        if (stop) return
+        setStatus(s)
+        setError(null)
+        if (s.state !== 'running') return end.current(s)
+      } catch (err) {
+        if (stop) return
+        setError(err)
+        if (err.kind !== 'unreachable') return end.current({ state: 'failed', error: err })
+      }
+      timer = setTimeout(tick, 1500)
+    }
+    tick()
+    return () => {
+      stop = true
+      clearTimeout(timer)
+    }
+  }, [call, job])
+  return { status, error }
+}
+
+// The last thing a job said, for showing progress.
+export const lastLog = (status) => status?.log?.filter(Boolean).at(-1) ?? ''
