@@ -3,3 +3,4 @@ Disallow: /login
 Disallow: /admin
 Disallow: /team
 Disallow: /analytics
+Disallow: /edit

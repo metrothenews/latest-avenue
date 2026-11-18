@@ -21,6 +21,8 @@ const Campaigns = lazy(() => import('./pages/admin/Campaigns.jsx'))
 const Analytics = lazy(() => import('./pages/Analytics.jsx'))
 const AdminTeam = lazy(() => import('./pages/admin/Team.jsx'))
 const AdminExperience = lazy(() => import('./pages/admin/Experience.jsx'))
+// The cloud video editor's live view fills the whole screen, so it sits outside the admin layout.
+const Edit = lazy(() => import('./pages/Edit.jsx'))
 const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
@@ -75,6 +77,7 @@ export default function App() {
                 <Route path="/admin/experience" element={<AdminExperience />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
+              <Route path="/edit" element={<Edit />} />
             </Route>
             {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in TeamAccess). */}
             {/* latest avenue note: boards the team edits; shared boards are readable by anyone with the link. */}
