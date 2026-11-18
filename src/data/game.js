@@ -16,7 +16,7 @@ export const game = {
   },
   rounds: { 1: 'Round 1', 2: 'Final round' },
 
-  // Show mode (/game/join?then=experience): when the game ends, a police report types itself out
+  // Show mode (/experience, the default there, or /game/join?then=experience): when the game ends, a police report types itself out
   // and reveals the winner's name, then the big screen becomes the /experience (as if the game had
   // been running on the Desk 1 monitor all along) and the winner's phone becomes its controller.
   show: {

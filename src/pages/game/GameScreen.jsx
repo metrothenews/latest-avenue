@@ -47,12 +47,13 @@ const between = (low, high) => low + Math.random() * (high - low)
 // timer, shuffles the answers, counts the votes, makes the cut and names the winner
 // (lib/gameTally.js); phones (/game/play) only send their own answer and vote.
 //
-// /game/join?demo=1 is demo mode, for trying the game on one device: a phone is shown beside the
+// /game/join?demo=1 (or /experience?demo=1 in show mode) is demo mode, for trying the game on one device: a phone is shown beside the
 // big screen, and two bots join, answer and vote so there is someone to play against.
-export default function GameScreen() {
+// /experience renders this with `show`, which is the same as /game/join?then=experience.
+export default function GameScreen({ show = false }) {
   const [code] = useState(newCode)
   const [params] = useSearchParams()
-  const showMode = params.get('then') === 'experience' // hand over to /experience when the game ends
+  const showMode = show || params.get('then') === 'experience' // hand over to /experience when the game ends
   const [pad] = useState(newPad)
   const navigate = useNavigate()
   const [veil, setVeil] = useState(false) // fades the screen to black on the way out
@@ -311,7 +312,7 @@ export default function GameScreen() {
                   <WinButton className="mt-5 w-full text-[20px] font-bold" onClick={start} disabled={players.length < game.minPlayers}>{copy.start}</WinButton>
                   {demo
                     ? <p className="mt-3 text-[14px] leading-snug"><b>{game.demo.label}.</b> {game.demo.hint}</p>
-                    : <a href="/game/join?demo=1" className="mt-3 inline-block text-[14px] text-[#000080] underline">{game.demo.open}</a>}
+                    : <a href={show ? '/experience?demo=1' : showMode ? '/game/join?then=experience&demo=1' : '/game/join?demo=1'} className="mt-3 inline-block text-[14px] text-[#000080] underline">{game.demo.open}</a>}
                 </div>
               </div>
             </Window>

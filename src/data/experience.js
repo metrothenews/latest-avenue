@@ -65,7 +65,7 @@ export const experience = {
   callSeconds: 30, // how long the phone step lasts until a real recording sets it
   callAudio: null, // the recording's address, once there is one
   hintSeconds: 30, // how long the player can go without finding what's next before the prompt appears
-  // Arriving from the party game (/game/join?then=experience): the game's last screen is shown on
+  // Arriving from the party game (/experience, or /game/join?then=experience): the game's last screen is shown on
   // this monitor, held for a moment, then the view pulls back into the room.
   handoff: { spot: 'desk-1', holdSeconds: 1.8, title: 'Incident Report' },
   // What a phone without the controls can send: nudges (shown at the edges of the big screen)
@@ -182,7 +182,7 @@ export const experience = {
     skip: 'Skip chapter',
     connectText2: 'Or type the 4-letter code of a party game opened in show mode, to follow it into the experience.',
     noGame: 'No game with that code.',
-    gameNotShow: "That game wasn't opened in show mode (/game/join?then=experience).",
+    gameNotShow: "That game wasn't opened in show mode (open it at /experience).",
     gameOn: (code) => `Following game ${code}. The experience opens when it ends.`,
     gameTitle: 'Party game',
     gameText: "Names are shown to nobody unless that player wins. Change any of them here; the winner's is revealed on the police report.",

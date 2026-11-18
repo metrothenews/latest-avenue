@@ -34,8 +34,9 @@ const NoteBoard = lazy(() => import('./pages/note/NoteBoard.jsx'))
 const TeamAssignments = lazy(() => import('./pages/TeamAssignments.jsx'))
 // The hidden game loads lazily too: its country outlines are a large file.
 const Global = lazy(() => import('./pages/Global.jsx'))
-// The 360° view fills the whole screen, so it sits outside the site layout.
-const Experience = lazy(() => import('./pages/Experience.jsx'))
+// The 360° view fills the whole screen, so it sits outside the site layout. /experience starts
+// with the party game (show mode) and hands over to the view; /experience?explore skips the game.
+const ExperienceShow = lazy(() => import('./pages/ExperienceShow.jsx'))
 const Controller = lazy(() => import('./pages/Controller.jsx'))
 // ALIBI.EXE: the big screen (/game/join) and the phones (/game/play).
 const GameScreen = lazy(() => import('./pages/game/GameScreen.jsx'))
@@ -59,7 +60,7 @@ export default function App() {
             <Route path="/global" element={<Global />} />
             <Route path="*" element={<NotFound />} />
           </Route>
-          <Route path="/experience" element={<Experience />} />
+          <Route path="/experience" element={<ExperienceShow />} />
           <Route path="/experience/controller" element={<Controller />} />
           <Route path="/game/join" element={<GameScreen />} />
           <Route path="/game/play" element={<GamePlay />} />
