@@ -6,10 +6,14 @@ import Button from '../ui/Button.jsx'
 import { Choice, Panel, Status, ToolError, driveError, lastLog, useAction, useJob } from './parts.jsx'
 
 // Step 5: hand over to the sequencer (the existing live view at /edit/sequencer).
-export function SequencerStep() {
+export function SequencerStep({ project, onNext }) {
+  const laidOut = Boolean(project?.laidOut)
   return (
-    <Panel title={copy.sequencer.title} intro={copy.sequencer.intro}>
-      <Button to="/edit/sequencer" className="min-h-11">{copy.sequencer.open}</Button>
+    <Panel title={copy.sequencer.title} intro={laidOut ? copy.sequencer.introLaidOut : copy.sequencer.intro}>
+      <div className="flex flex-wrap gap-2">
+        <Button to="/edit/sequencer" variant={laidOut ? 'secondary' : 'primary'} className="min-h-11">{copy.sequencer.open}</Button>
+        {project?.assembly?.state === 'done' && <Button variant={laidOut ? 'primary' : 'secondary'} className="min-h-11" onClick={onNext}>{copy.sequencer.next}</Button>}
+      </div>
     </Panel>
   )
 }
@@ -35,6 +39,7 @@ export default function ExportStep({ project, call, update, blocked }) {
   const allow = async () => {
     try {
       setToken(await connectDriveExport())
+      setError(null)
     } catch (err) {
       setError(driveError(err))
     }
@@ -42,6 +47,12 @@ export default function ExportStep({ project, call, update, blocked }) {
 
   const go = () =>
     act(async () => {
+      // The token is only good for an hour: if it ran out, ask for it again first.
+      const fresh = getDriveExportToken()
+      if (!fresh) {
+        setToken(null)
+        throw driveError({ kind: 'auth' })
+      }
       setAgain(false)
       const f = EXPORT_FORMATS[kind]
       const output = `${projectDir(project)}/${slug(project.name)}-${kind}.${f.ext}`
@@ -49,8 +60,8 @@ export default function ExportStep({ project, call, update, blocked }) {
       try {
         if (kind === 'video') await call(renderVideo, output)
         else await call(exportSequence, project.assembly.output, output, f.format)
-        const folderId = await ensureExportFolder(token, folderName).catch((err) => { throw driveError(err) })
-        const started = await call(uploadToDrive, { filepath: output, folderId, driveToken: token })
+        const folderId = await ensureExportFolder(fresh, folderName).catch((err) => { throw driveError(err) })
+        const started = await call(uploadToDrive, { filepath: output, folderId, driveToken: fresh })
         update({ export: { kind, state: 'uploading', job: started.job } })
       } catch (err) {
         update({ export: { kind, state: 'failed', message: err.message } })
@@ -78,7 +89,7 @@ export default function ExportStep({ project, call, update, blocked }) {
           </div>
         </div>
       )}
-      {ex.state === 'failed' && !error && <ToolError error={{ kind: 'failed', message: ex.message || copy.export.failed }} />}
+      {ex.state === 'failed' && !error && <ToolError error={{ kind: 'failed', message: ex.message || copy.export.failed }} onReconnect={allow} />}
 
       {choosing && (
         <div className="mt-2 space-y-3">
@@ -97,7 +108,7 @@ export default function ExportStep({ project, call, update, blocked }) {
           )}
         </div>
       )}
-      <ToolError error={error} />
+      <ToolError error={error} onReconnect={allow} />
     </Panel>
   )
 }

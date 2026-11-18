@@ -36,6 +36,8 @@ function nextStep(p) {
   if (p.footage?.state !== 'ready') return 'footage'
   if (!p.script) return 'script'
   if (p.assembly?.state !== 'done') return 'assembly'
+  // Back from the sequencer after laying the cut out: carry on from there (export is next).
+  if (p.laidOut) return 'sequencer'
   return 'editing'
 }
 
@@ -120,8 +122,16 @@ export default function EditProject() {
     return () => { run.current++ }
   }, [wake])
 
+  // Google Drive (read-only) for picking and copying the footage. The token is checked each
+  // time it's used and sent with that one request; the editor uses it once and doesn't keep it.
   const drive = {
-    token: driveToken,
+    token: driveToken && getDriveToken(),
+    // A token that is still good right now, or null (then the page asks to connect again).
+    current: () => {
+      const t = getDriveToken()
+      if (!t && driveToken) setDriveToken(null)
+      return t
+    },
     connect: async () => {
       const t = await connectDrive()
       setDriveToken(t)
@@ -179,7 +189,7 @@ export default function EditProject() {
         {step === 'script' && <ScriptStep {...props} onNext={() => go('assembly')} />}
         {step === 'assembly' && <AssemblyStep {...props} onNext={() => go('editing')} />}
         {step === 'editing' && <EditingStep {...props} onBack={() => go('script')} />}
-        {step === 'sequencer' && <SequencerStep />}
+        {step === 'sequencer' && <SequencerStep project={project} onNext={() => go('export')} />}
         {step === 'export' && <ExportStep {...props} />}
         {project && step !== 'start' && (
           <p className="mt-8 text-center text-xs text-white/40">

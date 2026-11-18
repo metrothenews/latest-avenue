@@ -46,10 +46,18 @@ export default function FootageStep({ project, call, update, drive, onNext, bloc
 
   const pick = (folder) =>
     act(async () => {
-      const started = await call(fetchDriveFolder, { folderId: folder.id, driveToken: drive.token })
+      const driveToken = drive.current()
+      if (!driveToken) throw driveError({ kind: 'auth' })
+      const started = await call(fetchDriveFolder, { folderId: folder.id, driveToken })
       update({ footage: { folderId: folder.id, folderName: folder.name, job: started.job, state: 'fetching' }, script: null, assembly: null, export: null })
       setPicking(false)
     })
+  // The same folder again (after a failure, or once Drive is connected again).
+  const again = () => {
+    if (!drive.current()) return setPicking(true)
+    pick({ id: footage.folderId, name: footage.folderName })
+  }
+  const reconnect = () => drive.connect().then(() => setError(null)).catch(onDriveError)
 
   const onDriveError = (err) => {
     if (err?.kind === 'auth') drive.expire()
@@ -79,10 +87,10 @@ export default function FootageStep({ project, call, update, drive, onNext, bloc
                 {footage.unreadable > 0 && <p className="text-sm text-white/50">{copy.footage.unreadable(footage.unreadable)}</p>}
               </>
             )}
-            {footage.state === 'failed' && <ToolError error={{ kind: 'failed', message: footage.message }} />}
+            {footage.state === 'failed' && <ToolError error={{ kind: 'failed', message: footage.message }} onRetry={again} onReconnect={async () => { await reconnect(); again() }} />}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {footage.state === 'ready' && <Button className="min-h-11" onClick={onNext}>{copy.footage.next}</Button>}
+            {footage.state === 'ready' && <Button className="min-h-11" onClick={onNext}>{project.kind === 'music' ? copy.footage.nextMusic : copy.footage.next}</Button>}
             <Button variant="secondary" className="min-h-11" onClick={() => setPicking(true)}>{copy.footage.change}</Button>
           </div>
         </div>
@@ -100,7 +108,7 @@ export default function FootageStep({ project, call, update, drive, onNext, bloc
           </div>
         )
       )}
-      <ToolError error={error} />
+      <ToolError error={error} onReconnect={reconnect} />
     </Panel>
   )
 }

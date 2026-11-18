@@ -20,7 +20,7 @@ export const editSettings = {
 
 export const edit = {
   tag: 'edit',
-  back: 'Project',  // the live view's header link back to the /edit flow
+  back: '← Steps',  // the live view's header link back to the /edit flow
   fullScreen: 'Full screen',
   exitFullScreen: 'Exit full screen',
   keys: 'Keys',

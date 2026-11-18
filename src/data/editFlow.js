@@ -19,6 +19,7 @@ export const editFlow = {
   editor: {
     starting: 'Starting the editor… This takes up to a minute when it has been off.',
     unreachable: 'Couldn’t reach the editor.',
+    unreachableHelp: 'It may be starting up or the computer it runs on may be off. Try again in a minute.',
     denied: 'This account can’t use the editor.',
     notDeployed: 'The editor hasn’t been set up yet (editServiceUrl in src/data/edit.js).',
     retry: 'Try again',
@@ -30,6 +31,9 @@ export const editFlow = {
   },
   gone: 'The editor restarted and lost track of this step. Start it again.',
   failed: 'The editor couldn’t do that:',
+  failedPlain: 'Something went wrong in the editor.',
+  failedPlainHelp: 'Try again. If it keeps happening, the details below say what the editor ran into.',
+  details: 'What the editor said',
   loading: 'Loading…',
   seconds: (s) => (s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`),
 
@@ -71,7 +75,8 @@ export const editFlow = {
         .filter(Boolean).join(' · ') || 'No video, photos or sound found in this folder.',
     total: (t) => `${t} in total`,
     unreadable: (n) => `${n} file${n === 1 ? '' : 's'} couldn’t be read.`,
-    next: 'Next',
+    next: 'Next: the script',
+    nextMusic: 'Next: the song',
   },
 
   script: {
@@ -209,6 +214,8 @@ export const editFlow = {
     title: 'Open in the sequencer',
     intro: 'The sequencer shows your cut on a timeline. Quick crop and quick colour are in its game view, then you can fine-tune the edit there.',
     open: 'Open the sequencer',
+    introLaidOut: 'Your cut is on the sequencer’s timeline. Fine-tune it there (quick crop and quick colour are in its game view), then come back here to export.',
+    next: 'Next: export',
   },
 
   export: {

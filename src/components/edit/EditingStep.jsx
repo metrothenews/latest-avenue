@@ -123,7 +123,7 @@ function SoundPanel({ doc, onFix }) {
 
 // Step 4: the editing script, edited like a screenplay. Each change is saved in the editor
 // straight away, and the page shows the editor's result.
-export default function EditingStep({ project, call, blocked, onBack }) {
+export default function EditingStep({ project, call, update, blocked, onBack }) {
   const navigate = useNavigate()
   const path = project.assembly.output
   const [doc, setDoc] = useState(null)
@@ -181,6 +181,7 @@ export default function EditingStep({ project, call, blocked, onBack }) {
   const onSubmit = () =>
     submit.act(async () => {
       await call(layOutEditingScript, path)
+      update({ laidOut: true })
       navigate('/edit/sequencer')
     })
 

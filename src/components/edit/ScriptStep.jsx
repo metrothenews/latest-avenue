@@ -23,7 +23,7 @@ function Recheck({ project, call, update, drive, onError }) {
   const go = async () => {
     try {
       setBusy(true)
-      const token = drive.token ?? (await drive.connect())
+      const token = drive.current() ?? (await drive.connect())
       const started = await call(fetchDriveFolder, { folderId: project.footage.folderId, driveToken: token })
       setJob(started.job)
     } catch (err) {

@@ -15,23 +15,44 @@ export function Panel({ title, intro, children }) {
   )
 }
 
+// Messages from the editor that read like program output rather than a sentence for a person.
+const technical = (m) => /Error:|Traceback|Exception|errno|\bat 0x|https?:\/\//.test(m) || m.length > 180
+
+// Drive refused the token: it ran out or was revoked. The fix is to connect again.
+export const isDriveAuth = (m) => /\b401\b|invalid (authentication|credentials)|unauthenticated|token (has )?expired|invalid_grant/i.test(m ?? '')
+
 // An honest message for a failed editor call (see EditToolError in lib/editProject.js).
-export function ToolError({ error, onRetry }) {
+// onRetry adds "Try again"; onReconnect adds "Connect Google Drive" when Drive refused.
+export function ToolError({ error, onRetry, onReconnect }) {
   if (!error) return null
   const kind = error.kind
+  const message = String(error.message ?? '')
   let title = copy.failed
-  let body = error.message
+  let body = message
+  let details = ''
   if (kind === 'notBuilt') [title, body] = [copy.notBuilt.title, copy.notBuilt.body]
-  else if (kind === 'unreachable') [title, body] = [copy.editor.unreachable, '']
+  else if (kind === 'unreachable') [title, body] = [copy.editor.unreachable, copy.editor.unreachableHelp]
   else if (kind === 'denied') [title, body] = [copy.editor.denied, '']
-  else if (kind === 'drive') [title, body] = [error.message, '']
+  else if (kind === 'drive') [title, body] = [message, '']
   else if (kind === 'gone') [title, body] = [copy.gone, '']
+  else if (isDriveAuth(message)) [title, body] = [copy.footage.expired, '']
+  else if (technical(message)) [title, body, details] = [copy.failedPlain, copy.failedPlainHelp, message]
+  const reconnect = onReconnect && (error.auth || isDriveAuth(message))
   return (
     <div role="alert" className="mt-4 rounded-lg border border-white/15 bg-white/5 p-4 text-sm">
       <p className="font-semibold text-white">{title}</p>
       {body && <p className="mt-1 break-words text-white/60">{body}</p>}
-      {kind === 'notBuilt' && <div className="mt-3"><Button variant="secondary" to="/edit/sequencer" className="min-h-11">{copy.sequencer.open}</Button></div>}
-      {onRetry && kind !== 'notBuilt' && kind !== 'denied' && <div className="mt-3"><Button variant="secondary" className="min-h-11" onClick={onRetry}>{copy.editor.retry}</Button></div>}
+      {details && (
+        <details className="mt-2 text-white/50">
+          <summary className="flex min-h-11 cursor-pointer items-center">{copy.details}</summary>
+          <p className="break-words font-mono text-xs">{details}</p>
+        </details>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2 empty:hidden">
+        {kind === 'notBuilt' && <Button variant="secondary" to="/edit/sequencer" className="min-h-11">{copy.sequencer.open}</Button>}
+        {reconnect && <Button className="min-h-11" onClick={onReconnect}>{copy.footage.connect}</Button>}
+        {onRetry && !reconnect && kind !== 'notBuilt' && kind !== 'denied' && <Button variant="secondary" className="min-h-11" onClick={onRetry}>{copy.editor.retry}</Button>}
+      </div>
     </div>
   )
 }

@@ -24,7 +24,7 @@ export default function AssemblyStep({ project, call, update, onNext, blocked })
         song: project.kind === 'music' ? project.music?.song?.path : undefined,
         lyrics: project.kind === 'music' ? project.music?.lyrics?.path : undefined,
       })
-      update({ assembly: { state: 'running', job: started.job, output: started.output } })
+      update({ assembly: { state: 'running', job: started.job, output: started.output }, laidOut: false })
     })
 
   const sum = a.summary

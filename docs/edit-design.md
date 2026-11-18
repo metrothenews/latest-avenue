@@ -85,6 +85,16 @@ How the page uses them:
 - **Files.** The footage is copied to `drive/<folder id>` in the editor's media folder (the `folder` in the fetch job's result). The project's own files live in a hidden `.latest-avenue/` folder inside it, which the editor's footage scan skips: the editing script is `<that>/<project id>.edit.json`, exports are `<that>/<name>-<format>.<ext>`.
 - **Text round trip.** `toText` in `src/lib/editingScript.js` mirrors the editor's `editing_script.to_text` exactly (checked on 2026-11-18: identical output on a sample with action, dialogue, extensions, parentheticals, a transition and a forced heading). A move, removal or rewording changes the document in the page, sends the whole text, then reloads the document from the editor, so the page always shows the editor's result (re-trims, new line IDs).
 - **Sound status** comes from `media[clip].sound` (synced to a recorder file, with `method`) and `audio_tracks`; "Couldn't sync" means there are recorder files but this clip matched none and has no sound of its own.
+- **Drive hand-off (Google sign-in → editor).** Footage: the existing read-only Drive connection
+  (`connectDrive` in `src/lib/driveAuth.js`, unchanged) gives an access token; the page checks it is
+  still good at the moment of each request and sends it as `access_token` with that one
+  `fetch_drive_folder` call (the editor uses it once and doesn't keep it). Export: a separate
+  `drive.file` token from `src/lib/driveExport.js`, asked for only at the export step, held in the
+  page's memory only (never stored), checked before each export and sent with that one
+  `upload_to_drive` call. If Drive refuses a token (it ran out, or was revoked), the step says "Your
+  Drive connection ran out" with a **Connect Google Drive** button that reconnects and retries.
+  When the builder settles the exact token shape in `cloud/TOOLS.md`, only `src/lib/editProject.js`
+  needs to follow it.
 - **Drive.** `fetch_drive_folder` gets the read-only token from `src/lib/driveAuth.js`. `upload_to_drive` gets a `drive.file` token from `src/lib/driveExport.js` and a folder ID the site creates with that token (`ensureExportFolder`), because `drive.file` can only write into folders the app made.
 
 Music videos: the editor's document has `"mode": "music"`. Every line is a stretch of the
@@ -112,6 +122,12 @@ The four asks from the first pass (`save_upload`, song and lyrics on `start_asse
   export) has no sideways scroll and no visible control under 44x44 px. To get there: the logo
   link, one-line text boxes in the review, and the shared pop-up's ✕ (its tap area only; it looks
   the same) were made 44px tall.
+- **Re-run 2026-11-18 13:20 UTC, builder @7772e174:** short film and music video, each at 390px
+  touch and 1280px desktop: all four pass end to end, 36 screens, no sideways scroll, nothing
+  under 44px. Error states (stand-in editor, 390px): Drive refusing the token → "Your Drive
+  connection ran out" → Connect → the same folder copies; a technical editor error → "Something
+  went wrong in the editor." with the editor's words folded under "What the editor said" → Try
+  again → the cut builds.
 - **Not real in that run:** Google Drive in and out (`fetch_drive_folder` returned a folder
   already on the editor; `upload_to_drive` was stubbed), the gateway's sign-in check, and the
   live view's stream. The Docker image itself (`cloud/Dockerfile`) wasn't built here: this

@@ -4,19 +4,14 @@ import { auth } from './firebase.js'
 // "Save to Drive" access for exports from the /edit flow, kept apart from the read-only Drive
 // access in driveAuth.js (which is unchanged). drive.file only reaches files this site creates,
 // so the editor can save an export into Drive without being able to touch anything else.
-// The token lasts an hour, is kept in sessionStorage (this tab only) and is only sent to Google
-// and to the owner's own editor service, for the export.
+// The token lasts an hour and is never stored: it lives in this page's memory only, and is
+// sent to Google and, with each export request, to the owner's own editor (which uses it once).
 export const DRIVE_EXPORT_SCOPE = 'https://www.googleapis.com/auth/drive.file'
-const KEY = 'drive-export-token'
 const LIFETIME_MS = 55 * 60 * 1000
+let held = null // { uid, token, expiresAt }
 
 export function getDriveExportToken() {
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(KEY))
-    if (saved?.uid === auth?.currentUser?.uid && saved.expiresAt > Date.now()) return saved.token
-  } catch {
-    // storage unavailable or corrupt: treat as not connected
-  }
+  if (held && held.uid === auth?.currentUser?.uid && held.expiresAt > Date.now()) return held.token
   return null
 }
 
@@ -29,11 +24,7 @@ export async function connectDriveExport() {
   const result = await reauthenticateWithPopup(user, provider)
   const token = GoogleAuthProvider.credentialFromResult(result)?.accessToken
   if (!token) throw new Error('Google did not return a Drive token.')
-  try {
-    sessionStorage.setItem(KEY, JSON.stringify({ uid: user.uid, token, expiresAt: Date.now() + LIFETIME_MS }))
-  } catch {
-    // storage unavailable: token still works for this page view
-  }
+  held = { uid: user.uid, token, expiresAt: Date.now() + LIFETIME_MS }
   return token
 }
 
