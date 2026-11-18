@@ -36,6 +36,43 @@ export async function callEditTool(token, method, params = {}) {
   return data.result
 }
 
+// --- Chat with the editing agent -------------------------------------------------------
+// The agent is a language model running on the same machine as the editor; it works the
+// editor through its tools while you watch. These calls only pass messages and read events.
+
+async function chatCall(token, path, body) {
+  let res
+  try {
+    res = await fetch(`${base()}/api/chat/${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    throw new Error('unreachable')
+  }
+  if (res.status === 401 || res.status === 403) throw Object.assign(new Error('denied'), { denied: true })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? `status ${res.status}`)
+  return data
+}
+
+// { session, busy, last, turns, llm: { model, adapters, downloaded, running } }
+export const getChatState = (token) => chatCall(token, 'state')
+
+// Waits (up to `wait` seconds, on the server) for events after number `after`.
+// Returns { events: [...], busy, last, session, llm }. Each event has seq, ts, type and its
+// own fields: user_message / assistant_message { text }, tool_call { id, name, arguments },
+// tool_result { id, name, ok, text, seconds }, capability_gap { capability }, model_status
+// { state, done, total }, thinking { step }, error { text }, feedback, turn_end, session_start.
+export const getChatEvents = (token, after, wait = 25) => chatCall(token, `events?after=${after}&wait=${wait}`)
+
+export const sendChatMessage = (token, text) => chatCall(token, 'send', { text })
+export const stopChat = (token) => chatCall(token, 'stop', {})
+export const newChat = (token) => chatCall(token, 'new', {})
+// rating: 'up' or 'down', about the event numbered `seq`. Goes into the training record.
+export const sendChatFeedback = (token, seq, rating, note = '') => chatCall(token, 'feedback', { seq, rating, note })
+
 // Opens the live view of the editor inside `target` (an empty element) and returns the
 // connection. The token goes in the WebSocket's protocol list, not the address, so it never
 // lands in a log. `on` may have connect(), disconnect({ clean }) and denied() callbacks.
