@@ -5,6 +5,7 @@ import Button from '../components/ui/Button.jsx'
 import { useAuth } from '../components/auth/AuthProvider.jsx'
 import { edit as copy } from '../data/edit.js'
 import { editConfigured, getEditStatus, openEditStream, sendEditKey } from '../lib/editStream.js'
+import ChatPanel from '../components/edit/ChatPanel.jsx'
 
 // How long to keep asking a service that is still starting before giving up.
 const START_TIMEOUT_MS = 120000
@@ -23,6 +24,9 @@ export default function Edit() {
   const [state, setState] = useState(editConfigured ? 'starting' : 'notDeployed')
   const [full, setFull] = useState(false)
   const [keys, setKeys] = useState(() => window.matchMedia?.('(pointer: coarse)').matches ?? false)
+  // The assistant's chat: beside the editor on wide screens, over it on narrow ones.
+  const [chat, setChat] = useState(() => window.matchMedia?.('(min-width: 1024px)').matches ?? false)
+  const getToken = useCallback(() => user.getIdToken(), [user])
 
   const connect = useCallback(async () => {
     if (!editConfigured) return
@@ -116,6 +120,7 @@ export default function Edit() {
             <span className="hidden truncate sm:inline">{connected ? s.connected : (message?.[0] ?? '')}</span>
           </span>
           <div className="ml-auto flex items-center gap-2">
+            <Button variant={chat ? 'primary' : 'secondary'} className="min-h-11 !px-4 !py-1.5 sm:min-h-0 sm:!px-3" aria-pressed={chat} onClick={() => setChat((v) => !v)}>{copy.chat.button}</Button>
             <Button variant={keys ? 'primary' : 'secondary'} className="min-h-11 !px-4 !py-1.5 sm:min-h-0 sm:!px-3" aria-pressed={keys} onClick={() => setKeys((v) => !v)}>{copy.keys}</Button>
             <Button variant="secondary" className="hidden !px-3 !py-1.5 sm:inline-flex" onClick={toggleFull}>{full ? copy.exitFullScreen : copy.fullScreen}</Button>
             <Link to="/admin" className="inline-flex min-h-11 items-center rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white sm:min-h-0">{copy.back}</Link>
@@ -123,7 +128,8 @@ export default function Edit() {
         </div>
       </header>
 
-      <main className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+      <main className="relative min-h-0 min-w-0 flex-1">
         {/* The live view draws itself into this element. */}
         <div ref={screen} className={`absolute inset-0 ${connected ? '' : 'invisible'}`} />
         {!connected && message && (
@@ -136,6 +142,12 @@ export default function Edit() {
           </div>
         )}
       </main>
+      {chat && editConfigured && (
+        <aside className="absolute inset-0 z-10 bg-ink lg:static lg:z-auto lg:w-[22rem] lg:shrink-0 lg:border-l lg:border-white/10 lg:bg-transparent">
+          <ChatPanel getToken={getToken} active={connected} />
+        </aside>
+      )}
+      </div>
 
       {keys && (
         <div className="glass-bar shrink-0 border-t px-2 py-2">
