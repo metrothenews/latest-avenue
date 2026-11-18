@@ -31,7 +31,7 @@ function TrimField({ id, label, value, onChange }) {
 }
 
 // Swap a line's take for one of its ranked alternatives, and trim what plays.
-export default function TakeSheet({ doc, line, busy, onClose, onChoose, onTrim }) {
+export default function TakeSheet({ doc, line, thumbs, busy, onClose, onChoose, onTrim }) {
   const [cut, setCut] = useState(null)
   useEffect(() => { setCut(line?.cut ? { in: line.cut.in, out: line.cut.out } : null) }, [line?.cut?.clip, line?.cut?.in, line?.cut?.out]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!line) return null
@@ -57,8 +57,10 @@ export default function TakeSheet({ doc, line, busy, onClose, onChoose, onTrim }
                 aria-pressed={inUse}
                 disabled={busy}
                 onClick={() => !inUse && onChoose(i)}
-                className={`flex w-full flex-col items-start rounded-xl border p-3 text-left text-sm disabled:opacity-60 ${inUse ? 'border-white/40 bg-white/10' : 'border-white/10 bg-white/[0.03] hover:border-white/25'}`}
+                className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm disabled:opacity-60 ${inUse ? 'border-white/40 bg-white/10' : 'border-white/10 bg-white/[0.03] hover:border-white/25'}`}
               >
+                {thumbs?.[i] && <img src={thumbs[i]} alt="" className="h-12 w-20 shrink-0 rounded-md bg-black object-cover" />}
+                <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-semibold">{copy.editing.takeOf(i + 1, takes.length)}</span>
                   {i === 0 && <span className="rounded-full border border-white/15 px-2 text-xs text-white/60">{copy.take.best}</span>}
@@ -68,13 +70,14 @@ export default function TakeSheet({ doc, line, busy, onClose, onChoose, onTrim }
                 <span className="mt-1 block break-all text-white/60">{clipName(doc, t.clip)}</span>
                 <span className="block text-white/50">{clock(t.in)} → {clock(t.out)}</span>
                 {t.heard && <span className="mt-1 block break-words text-xs text-white/40">{copy.take.heard} “{t.heard}”</span>}
+                </span>
               </button>
             </li>
           )
         })}
       </ul>
 
-      {cut && (
+      {cut && !line.music && (
         <div className="mt-6 border-t border-white/10 pt-4">
           <h3 className="text-sm font-semibold">{copy.take.trim}</h3>
           <div className="mt-3 grid gap-4">

@@ -1,5 +1,6 @@
 import { editFlow as copy } from '../../data/editFlow.js'
 import { editingScriptPath, startAssembly } from '../../lib/editProject.js'
+import { clock } from '../../lib/editingScript.js'
 import Button from '../ui/Button.jsx'
 import { Panel, Status, ToolError, lastLog, useAction, useJob } from './parts.jsx'
 
@@ -16,13 +17,19 @@ export default function AssemblyStep({ project, call, update, onNext, blocked })
 
   const build = () =>
     act(async () => {
-      const started = await call(startAssembly, { mediaFolder: project.footage.folder, output: editingScriptPath(project), script })
+      const started = await call(startAssembly, {
+        mediaFolder: project.footage.folder,
+        output: editingScriptPath(project),
+        script,
+        song: project.kind === 'music' ? project.music?.song?.path : undefined,
+        lyrics: project.kind === 'music' ? project.music?.lyrics?.path : undefined,
+      })
       update({ assembly: { state: 'running', job: started.job, output: started.output } })
     })
 
   const sum = a.summary
   return (
-    <Panel title={copy.assembly.title} intro={a.state === 'idle' ? (script ? copy.assembly.intro : copy.assembly.introNoScript) : ''}>
+    <Panel title={copy.assembly.title} intro={a.state !== 'idle' ? '' : project.kind === 'music' ? copy.assembly.introMusic : script ? copy.assembly.intro : copy.assembly.introNoScript}>
       {a.state === 'idle' && <Button className="min-h-11" disabled={busy || blocked} onClick={build}>{copy.assembly.build}</Button>}
 
       {a.state === 'running' && (
@@ -40,7 +47,13 @@ export default function AssemblyStep({ project, call, update, onNext, blocked })
       {a.state === 'done' && (
         <div>
           <Status>{copy.assembly.done}</Status>
-          {sum && <p className="mt-1 text-sm text-white/60">{copy.assembly.summary(sum.lines_with_footage ?? 0, sum.dialogue_lines ?? 0, sum.unplaced?.length ?? 0)}</p>}
+          {sum && (
+            <p className="mt-1 text-sm text-white/60">
+              {project.kind === 'music'
+                ? copy.assembly.summaryMusic(sum.events ?? 0, clock(sum.duration ?? 0))
+                : copy.assembly.summary(sum.lines_with_footage ?? 0, sum.dialogue_lines ?? 0, sum.unplaced?.length ?? 0)}
+            </p>
+          )}
           <div className="mt-4"><Button className="min-h-11" onClick={onNext}>{copy.assembly.open}</Button></div>
           <div className="mt-6 border-t border-white/10 pt-4">
             <Button variant="secondary" className="min-h-11" disabled={busy || blocked} onClick={build}>{copy.assembly.rebuild}</Button>

@@ -57,32 +57,46 @@ export const probeMedia = (token, folder) => tool(token, 'probe_media', { filepa
 // Reads a screenplay (.pdf, .fountain, .txt) already on the editor. -> { title, scenes, dialogue_lines, ... }
 export const readScreenplay = (token, path) => tool(token, 'read_screenplay', { filepath: path })
 
-// The gateway caps a request at 1 MB, and base64 grows a file by a third.
-export const MAX_UPLOAD_BYTES = 700 * 1024
+// The editor takes at most 700 KB per call (the gateway caps a request at 1 MB, and base64
+// grows a file by a third), so bigger files go in parts.
+const UPLOAD_PART = 700 * 1024
+export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 
-const toBase64 = (file) =>
+const toBase64 = (blob) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
     reader.onerror = () => reject(new EditToolError('Couldn’t read that file.', 'failed'))
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(blob)
   })
 
-// Sends a script PDF from this device into the project's folder on the editor.
-// TODO(tool name): the editor has no upload tool yet. Proposed: `save_upload`
-// { filepath, data_base64 } -> { filepath, bytes }. Until it exists this fails as 'notBuilt'.
-export async function uploadScript(token, folder, file) {
+// Sends a file from this device (a script PDF, lyrics, a song) into uploads/<project id> in the
+// editor's media folder, in parts. onProgress(0..1). -> { filepath, relative, bytes }; pass
+// `relative` to read_screenplay / start_assembly.
+export async function uploadFile(token, projectId, file, onProgress) {
   if (file.size > MAX_UPLOAD_BYTES) throw new EditToolError('tooLarge', 'tooLarge')
-  const filepath = `${folder}/.latest-avenue/${file.name.replace(/[^\w. -]/g, '_')}`
-  return tool(token, 'save_upload', { filepath, data_base64: await toBase64(file) })
+  let result
+  for (let at = 0; at === 0 || at < file.size; at += UPLOAD_PART) {
+    const part = await toBase64(file.slice(at, at + UPLOAD_PART))
+    result = await tool(token, 'save_upload', { name: file.name, data_base64: part, folder: `uploads/${projectId}`, append: at > 0 })
+    onProgress?.(Math.min(1, (at + UPLOAD_PART) / Math.max(1, file.size)))
+  }
+  return result
 }
 
 // --- Step 3: the assembly cut ----------------------------------------------------------------
 
 // -> job; its result is the editing script's summary. Without `script` the editor makes a
-// rough one from what was said.
-export const startAssembly = (token, { mediaFolder, output, script }) =>
-  tool(token, 'start_assembly', { media_folder: mediaFolder, output, ...(script ? { script } : {}) })
+// rough one from what was said. With `song` (a music video) the song sets the timeline and the
+// pictures cut on the beat; `lyrics` is an optional lyric sheet.
+export const startAssembly = (token, { mediaFolder, output, script, song, lyrics }) =>
+  tool(token, 'start_assembly', {
+    media_folder: mediaFolder,
+    output,
+    ...(script ? { script } : {}),
+    ...(song ? { song } : {}),
+    ...(song && lyrics ? { lyrics } : {}),
+  })
 
 // --- Step 4: the editing script --------------------------------------------------------------
 
@@ -95,6 +109,15 @@ export const editEditingScript = (token, path, text) => tool(token, 'edit_editin
 
 // Plays a line from another of its ranked takes (0 = best).
 export const chooseTake = (token, path, line, take) => tool(token, 'choose_take', { filepath: path, line, take })
+
+// One JPEG per take of a line, as data: URLs. -> { line, takes: [{ take, data_url, error? }] }
+export const takeThumbnails = (token, path, line) => tool(token, 'take_thumbnails', { filepath: path, line, width: 160 })
+
+// Fixes one camera clip's sound: pair it with a sound file at an offset (recorder time = clip
+// time + offset, seconds), or `clear` it so the camera's own sound plays.
+// -> { clip, sound: { clip, offset, method: 'manual' } | null }
+export const setClipSync = (token, path, clip, { audioClip, offset, clear } = {}) =>
+  tool(token, 'set_clip_sync', clear ? { filepath: path, clip, clear: true } : { filepath: path, clip, audio_clip: audioClip, offset })
 
 // Where a line starts and ends in its clip, in seconds.
 export const setLineCut = (token, path, line, cutIn, cutOut) =>

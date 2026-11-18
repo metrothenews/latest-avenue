@@ -121,6 +121,7 @@ export const playingTake = (el) => (el.takes?.length && el.take != null ? el.tak
 // Thresholds are a design guess on the matcher's 0..1 score (see docs/edit-design.md).
 export function confidence(el) {
   if (!el.cut) return null
+  if (el.music) return 'music'
   if (el.type !== 'dialogue' || el.cut.from === 'cover') return 'cover'
   const score = playingTake(el)?.score
   if (score == null) return 'guess'
@@ -140,6 +141,16 @@ export function soundStatus(doc, clipId) {
   if (!hasRecorder) return m.audio_tracks ? null : { status: 'silent' }
   return { status: m.audio_tracks ? 'camera' : 'unsynced' }
 }
+
+// What a line shows: its picture clip and in/out (for a music line or a voice-over, the cover).
+export function picture(doc, el) {
+  if (el.cover && (el.music || doc.media?.[el.cut?.clip]?.kind === 'audio')) return el.cover
+  return el.cut
+}
+
+// The separate sound files (recorders, songs) in the edit.
+export const soundFiles = (doc) =>
+  Object.entries(doc.media ?? {}).filter(([, m]) => m.kind === 'audio').map(([id, m]) => ({ id, name: m.name ?? id }))
 
 // Every picture clip with its sound status, for the review list.
 export function soundReport(doc) {

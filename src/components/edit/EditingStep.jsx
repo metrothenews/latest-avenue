@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { editFlow as copy } from '../../data/editFlow.js'
-import { chooseTake, editEditingScript, getEditingScript, layOutEditingScript, setLineCut } from '../../lib/editProject.js'
 import {
-  clipName, clock, confidence, cutLength, moveLine, removeLine, rows, setText, soundReport, soundStatus, toText,
+  chooseTake, editEditingScript, getEditingScript, layOutEditingScript, setClipSync, setLineCut, takeThumbnails,
+} from '../../lib/editProject.js'
+import {
+  clipName, clock, confidence, cutLength, moveLine, picture, removeLine, rows, setText, soundReport, soundStatus, toText,
 } from '../../lib/editingScript.js'
 import Button from '../ui/Button.jsx'
 import { Panel, Status, ToolError, useAction } from './parts.jsx'
 import TakeSheet from './TakeSheet.jsx'
+import SyncSheet from './SyncSheet.jsx'
 
 const HISTORY = 30
 const tool = 'min-h-11 rounded-full border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/80 hover:border-white/25 disabled:opacity-30'
@@ -42,9 +45,10 @@ function AutoText({ value, onCommit, className, label, disabled }) {
 
 function Line({ doc, line, first, last, busy, onOp, onOpen }) {
   const cut = line.cut
+  const shown = cut ? picture(doc, line) ?? cut : null
   const takes = line.takes ?? []
   const conf = confidence(line)
-  const sound = cut ? soundStatus(doc, cut.clip) : null
+  const sound = cut && doc.mode !== 'music' ? soundStatus(doc, shown.clip) : null
   const text = (cls, label) => <AutoText value={line.text ?? ''} label={label} className={cls} disabled={busy} onCommit={(v) => onOp(setText, v)} />
 
   if (line.type === 'heading') {
@@ -72,9 +76,9 @@ function Line({ doc, line, first, last, busy, onOp, onOpen }) {
               </span>
               <span className="mt-1 block">
                 {takes.length > 0 && line.take != null && <span className="font-semibold text-white/80">{copy.editing.takeOf(line.take + 1, takes.length)} · </span>}
-                <span className="break-all text-white/50">{clipName(doc, cut.clip)}</span>
+                <span className="break-all text-white/50">{clipName(doc, shown.clip)}</span>
               </span>
-              <span className="block text-white/50">{clock(cut.in)} → {clock(cut.out)} ({clock(cut.out - cut.in)})</span>
+              <span className="block text-white/50">{clock(shown.in)} → {clock(shown.in + (cut.out - cut.in))} ({clock(cut.out - cut.in)})</span>
             </span>
             {takes.length > 0 && <span className="shrink-0 text-blue-100/70">{copy.editing.changeTake}</span>}
           </button>
@@ -92,26 +96,26 @@ function Line({ doc, line, first, last, busy, onOp, onOpen }) {
   )
 }
 
-function SoundPanel({ doc }) {
+function SoundPanel({ doc, onFix }) {
+  const [all, setAll] = useState(false)
+  if (doc.mode === 'music') return null
   const report = soundReport(doc)
   if (!report.length) return null
   const problems = report.filter((c) => c.status !== 'synced')
+  const shown = all ? report : problems
   return (
     <Panel title={copy.editing.soundTitle} intro={copy.editing.soundIntro}>
-      {!problems.length && <p className="text-sm text-white/60">{copy.editing.soundAll(report.length)}</p>}
-      {problems.length > 0 && (
-        <>
-          <ul className="space-y-2">
-            {problems.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
-                <span className="min-w-0 break-all">{c.name}</span>
-                <span className={`${chip} ${soundStyle[c.status]}`}>{copy.editing.sound[c.status]}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-white/50">{copy.editing.soundFix}</p>
-        </>
-      )}
+      {!problems.length && !all && <p className="text-sm text-white/60">{copy.editing.soundAll(report.length)}</p>}
+      <ul className="space-y-2">
+        {shown.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
+            <span className="min-w-0 flex-1 break-all">{c.name}</span>
+            <span className={`${chip} ${soundStyle[c.status]}`}>{c.status === 'synced' ? copy.editing.sound.synced(c.method) : copy.editing.sound[c.status]}</span>
+            <button type="button" className={tool} onClick={() => onFix(c.id)}>{copy.editing.soundFix}</button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className={`${tool} mt-3`} onClick={() => setAll((v) => !v)}>{all ? copy.editing.soundShowProblems : copy.editing.soundShowAll}</button>
     </Panel>
   )
 }
@@ -125,6 +129,9 @@ export default function EditingStep({ project, call, blocked, onBack }) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const [sheet, setSheet] = useState(null) // line id
+  const [thumbs, setThumbs] = useState({})  // line id -> { take index: data URL }
+  const [syncClip, setSyncClip] = useState(null)
+  const [syncNote, setSyncNote] = useState('')
   const history = useRef([])
   const load = useAction()
   const submit = useAction()
@@ -140,6 +147,7 @@ export default function EditingStep({ project, call, blocked, onBack }) {
     try {
       await fn()
       setDoc(await call(getEditingScript, path))
+      setThumbs({})
     } catch (err) {
       setSaveError(err)
       setDoc(await call(getEditingScript, path).catch(() => doc))
@@ -155,6 +163,19 @@ export default function EditingStep({ project, call, blocked, onBack }) {
     const prev = history.current.pop()
     if (prev) change(() => call(editEditingScript, path, prev))
   }
+
+  // The takes' pictures, fetched when a line's takes are opened (once per line and version).
+  const openSheet = async (id) => {
+    setSheet(id)
+    if (thumbs[id]) return
+    try {
+      const r = await call(takeThumbnails, path, id)
+      setThumbs((t) => ({ ...t, [id]: Object.fromEntries((r.takes ?? []).filter((x) => x.data_url).map((x) => [x.take, x.data_url])) }))
+    } catch {
+      // thumbnails are a nicety: the list works without them
+    }
+  }
+  const fixSync = (fn) => change(async () => { await fn(); setSyncNote(copy.editing.sync.saved) })
 
   const onSubmit = () =>
     submit.act(async () => {
@@ -197,13 +218,14 @@ export default function EditingStep({ project, call, blocked, onBack }) {
               last={l.id === lines.at(-1)?.id}
               busy={busy}
               onOp={(fn, arg) => textChange(fn(doc, l.id, arg))}
-              onOpen={setSheet}
+              onOpen={openSheet}
             />
           ))}
         </div>
       </Panel>
 
-      <SoundPanel doc={doc} />
+      <SoundPanel doc={doc} onFix={(clip) => { setSyncNote(''); setSyncClip(clip) }} />
+      {syncNote && <p role="status" className="px-1 text-sm text-white/60">{syncNote}</p>}
 
       <Panel title={copy.editing.unusedTitle} intro={copy.editing.unusedIntro}>
         {!doc.unplaced?.length && <p className="text-sm text-white/50">{copy.editing.unusedNone}</p>}
@@ -223,9 +245,19 @@ export default function EditingStep({ project, call, blocked, onBack }) {
         <ToolError error={saveError ?? submit.error} />
       </div>
 
+      <SyncSheet
+        doc={doc}
+        clip={syncClip}
+        busy={saving}
+        onClose={() => setSyncClip(null)}
+        onSave={(audioClip, offset) => { fixSync(() => call(setClipSync, path, syncClip, { audioClip, offset })); setSyncClip(null) }}
+        onCamera={() => { fixSync(() => call(setClipSync, path, syncClip, { clear: true })); setSyncClip(null) }}
+      />
+
       <TakeSheet
         doc={doc}
         line={sheetLine}
+        thumbs={sheet ? thumbs[sheet] : null}
         busy={saving}
         onClose={() => setSheet(null)}
         onChoose={(i) => change(() => call(chooseTake, path, sheet, i))}
