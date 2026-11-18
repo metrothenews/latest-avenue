@@ -49,7 +49,8 @@ function Line({ doc, line, first, last, busy, onOp, onOpen }) {
   const takes = line.takes ?? []
   const conf = confidence(line)
   const sound = cut && doc.mode !== 'music' ? soundStatus(doc, shown.clip) : null
-  const text = (cls, label) => <AutoText value={line.text ?? ''} label={label} className={cls} disabled={busy} onCommit={(v) => onOp(setText, v)} />
+  const music = doc.mode === 'music'
+  const text = (cls, label) => music ? <p className={`px-1 py-0.5 font-mono text-[15px] leading-relaxed ${cls}`}>{line.text}</p> : <AutoText value={line.text ?? ''} label={label} className={cls} disabled={busy} onCommit={(v) => onOp(setText, v)} />
 
   if (line.type === 'heading') {
     return <h3 className="border-b border-white/5 px-1 pb-2 pt-6 font-mono text-[15px] font-bold uppercase first:pt-2">{line.text}</h3>
@@ -80,18 +81,18 @@ function Line({ doc, line, first, last, busy, onOp, onOpen }) {
               </span>
               <span className="block text-white/50">{clock(shown.in)} → {clock(shown.in + (cut.out - cut.in))} ({clock(cut.out - cut.in)})</span>
             </span>
-            {takes.length > 0 && <span className="shrink-0 text-blue-100/70">{copy.editing.changeTake}</span>}
+            {takes.length > 0 && <span className="shrink-0 text-blue-100/70">{music ? copy.editing.changePicture : copy.editing.changeTake}</span>}
           </button>
         ) : (
           line.type === 'dialogue' && <p className="mt-2 px-1 text-xs text-white/50">{copy.editing.noFootage}</p>
         )
       )}
 
-      <div className="mt-2 flex flex-wrap gap-2 px-1">
+      {!music && <div className="mt-2 flex flex-wrap gap-2 px-1">
         <button type="button" className={tool} disabled={busy || first} onClick={() => onOp(moveLine, -1)} aria-label={`${copy.editing.up}: ${line.id}`}>↑ {copy.editing.up}</button>
         <button type="button" className={tool} disabled={busy || last} onClick={() => onOp(moveLine, 1)} aria-label={`${copy.editing.down}: ${line.id}`}>↓ {copy.editing.down}</button>
         <button type="button" className={tool} disabled={busy} onClick={() => onOp(removeLine)}>{copy.editing.remove}</button>
-      </div>
+      </div>}
     </article>
   )
 }
@@ -199,7 +200,7 @@ export default function EditingStep({ project, call, blocked, onBack }) {
 
   return (
     <div className="space-y-4">
-      <Panel title={doc.title || copy.editing.title} intro={copy.editing.intro}>
+      <Panel title={doc.title || copy.editing.title} intro={doc.mode === 'music' ? copy.editing.introMusic : copy.editing.intro}>
         <p className="text-sm text-white/60">{copy.editing.length(clock(cutLength(doc)))}</p>
         {!lines.length && (
           <div className="mt-4">
@@ -237,7 +238,7 @@ export default function EditingStep({ project, call, blocked, onBack }) {
       <div className="glass-bar sticky bottom-0 z-10 -mx-4 border-t px-4 py-3 sm:mx-0 sm:rounded-xl sm:border">
         <div className="flex flex-wrap items-center gap-2">
           <span role="status" className="text-xs text-white/60">{saving ? copy.editing.saving : saveError ? copy.editing.saveFailed : copy.editing.saved}</span>
-          <button type="button" className={tool} disabled={busy || !history.current.length} onClick={undo}>{copy.editing.undo}</button>
+          {doc.mode !== 'music' && <button type="button" className={tool} disabled={busy || !history.current.length} onClick={undo}>{copy.editing.undo}</button>}
           <Button className="ml-auto min-h-11" disabled={busy || submit.busy || !lines.length} onClick={onSubmit}>
             {submit.busy ? copy.editing.submitting : copy.editing.submit}
           </Button>

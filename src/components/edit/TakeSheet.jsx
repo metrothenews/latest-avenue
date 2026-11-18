@@ -46,7 +46,7 @@ export default function TakeSheet({ doc, line, thumbs, busy, onClose, onChoose, 
   const changed = cut && line.cut && (cut.in !== line.cut.in || cut.out !== line.cut.out)
 
   return (
-    <Modal open onClose={onClose} title={copy.take.title}>
+    <Modal open onClose={onClose} title={line.music ? copy.editing.changePicture : copy.take.title}>
       <ul className="space-y-2">
         {takes.map((t, i) => {
           const inUse = i === line.take

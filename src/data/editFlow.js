@@ -141,6 +141,8 @@ export const editFlow = {
     editText: 'Edit the words',
     textHelp: 'Change the words to match what you want said. The editor re-trims the take to the words that are still there.',
     changeTake: 'Swap or trim',
+    changePicture: 'Swap picture',
+    introMusic: 'Each stretch of the song plays the picture shown under it. Tap one to swap in another shot.',
     takeOf: (n, total) => `Take ${n} of ${total}`,
     cover: 'Cover shot',
     confidence: {

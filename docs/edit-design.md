@@ -71,11 +71,13 @@ The builder's contract is `cloud/TOOLS.md` in `latest-avenue-edit` (branch
 |---|---|---|
 | 1 | `fetchDriveFolder`, `jobStatus`, `probeMedia` | `fetch_drive_folder` (job), `job_status`, `probe_media` |
 | 2 | `readScreenplay` | `read_screenplay` |
-| 2 | `uploadScript` | **`save_upload` — not in the contract yet** (proposed below) |
-| 3 | `startAssembly`, `jobStatus` | `start_assembly` (job) |
+| 2 | `uploadFile` | `save_upload` (in 700 KB parts with `append`; scripts, songs, lyric sheets) |
+| 3 | `startAssembly`, `jobStatus` | `start_assembly` (job; `song` and `lyrics` for a music video) |
 | 4 | `getEditingScript` | `get_editing_script` (`format: 'json'`) |
 | 4 | `editEditingScript` | `edit_editing_script`: moves, removals and rewording, sent as screenplay text |
 | 4 | `chooseTake`, `setLineCut` | `choose_take`, `set_line_cut` |
+| 4 | `takeThumbnails` | `take_thumbnails` (one `data:` JPEG per take, fetched when a line's takes are opened) |
+| 4 | `setClipSync` | `set_clip_sync` (sound file + offset, or `clear` for the camera's own sound) |
 | 5 | `layOutEditingScript` | `lay_out_editing_script` |
 | 6 | `renderVideo`, `exportSequence`, `uploadToDrive` | `render_video`, `export_sequence`, `upload_to_drive` (job) |
 
@@ -85,8 +87,34 @@ How the page uses them:
 - **Sound status** comes from `media[clip].sound` (synced to a recorder file, with `method`) and `audio_tracks`; "Couldn't sync" means there are recorder files but this clip matched none and has no sound of its own.
 - **Drive.** `fetch_drive_folder` gets the read-only token from `src/lib/driveAuth.js`. `upload_to_drive` gets a `drive.file` token from `src/lib/driveExport.js` and a folder ID the site creates with that token (`ensureExportFolder`), because `drive.file` can only write into folders the app made.
 
-Asks for the builder:
-1. **`save_upload { filepath, data_base64 } -> { filepath, bytes }`** so a script PDF can come from the phone or computer instead of Drive (the page caps it at 700 KB because the gateway takes 1 MB per request). Until it exists the page says that part isn't ready.
-2. **Song and lyrics for music videos**: `start_assembly` could take `song` and `lyrics` paths (the lyrics aligner in `tools/vse_lyrics` already exists). The page already asks for both.
-3. **Fixing sync by hand**: a tool to set or clear a clip's sound offset would let the Sound panel offer a fix; for now it says to line the sound up in the sequencer.
-4. Optional: a thumbnail per take (a small `data:` JPEG) for the swap list; `media[clip].shots[].thumbnail` is a path on the editor, which the browser can't load.
+Music videos: the editor's document has `"mode": "music"`. Every line is a stretch of the
+song (`cut`) with a picture over it (`cover`), and its `takes` are other pictures. The page shows
+the lines read-only (the song sets the timing), labels them "Cut to the beat", offers only
+**Swap picture**, and hides the Sound panel.
+
+The four asks from the first pass (`save_upload`, song and lyrics on `start_assembly`,
+`set_clip_sync`, `take_thumbnails`) were shipped by the builder at 19627901 and are wired in.
+
+## Testing
+
+- **Against the builder's real editor** (2026-11-18): the Linux build from `linux-build` with the
+  `claude/assembly-pipeline` Python over it, run headless (`blender -b`, the control server's
+  `serve_forever`) with the assembly environment from `tools/vse_assembly/requirements.txt`, on
+  the generated test shoot (`tests/vse/assembly/make_samples.py --tiny`). The page's gateway calls
+  were passed straight to the editor's `/rpc`. Short film on a phone-sized screen: footage → script
+  uploaded from the device → assembly (real transcription and matching) → review with real
+  thumbnails → swap take → trim → move and undo → fix sync → lay out → Premiere export. Music
+  video, phone and desktop: song from the folder, lyrics uploaded → assembly cut to the beat →
+  swap picture → lay out → rendered MP4. 18 of the tools exercised for real.
+- **Not real in that run:** Google Drive in and out (`fetch_drive_folder` returned a folder
+  already on the editor; `upload_to_drive` was stubbed), the gateway's sign-in check, and the
+  live view's stream. The Docker image itself (`cloud/Dockerfile`) wasn't built here: this
+  sandbox's network needs its own certificate inside the image, which I wasn't allowed to add.
+- **Stand-in editor** (fast checks): the same flow against a fake that runs the builder's
+  `editing_script` Python for text edits, take swaps and trims.
+
+## The assistant chat
+
+The chat panel from `claude/edit-chat` (`src/components/edit/ChatPanel.jsx`) is merged and kept,
+but hidden: `editSettings.assistantChat` in `src/data/edit.js` is `false`, because Sam's plan has
+no chat. Set it to `true` to bring back the Chat button in the sequencer's header.
