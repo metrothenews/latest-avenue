@@ -4,18 +4,19 @@ import TextField from '../components/ui/TextField.jsx'
 import Notice from '../components/ui/Notice.jsx'
 import Logo from '../components/layout/Logo.jsx'
 import { useAuth } from '../components/auth/AuthProvider.jsx'
-import { getMembership, isBlocked, joinTeam } from '../lib/team.js'
+import { getMembership, getRequest, isBlocked, requestToJoin } from '../lib/team.js'
 import { team } from '../data/team.js'
 
 const copy = team.join
 
 // /team/join: team sign-up. Sign in with Google, give a name and (optionally) what you do, and
-// you're on the team. Open to anyone; the owner sees new sign-ups at /admin/team and can remove
-// (and block) anyone they don't approve of. This page only decides what to show; firestore.rules
+// a request goes to the owner. It gives no access until the owner approves it at /admin/team
+// (declining it blocks that email). This page only decides what to show; firestore.rules
 // decide what can be written.
 export default function TeamJoin() {
   const { configured, user, loading, signIn, signOut } = useAuth()
-  const [stage, setStage] = useState('checking') // checking | details | member | joined | blocked
+  const [stage, setStage] = useState('checking') // checking | details | pending | member | blocked
+  const [attempt, setAttempt] = useState(0)
   const [form, setForm] = useState({ name: '', role: '' })
   const [nameError, setNameError] = useState('')
   const [error, setError] = useState('')
@@ -26,12 +27,12 @@ export default function TeamJoin() {
     let current = true
     setStage('checking')
     setForm({ name: user.displayName ?? '', role: '' })
-    Promise.all([getMembership(user.email), isBlocked(user.email)]).then(
-      ([member, blocked]) => current && setStage(member ? 'member' : blocked ? 'blocked' : 'details'),
+    Promise.all([getMembership(user.email), isBlocked(user.email), getRequest(user.email)]).then(
+      ([member, blocked, request]) => current && setStage(member ? 'member' : blocked ? 'blocked' : request ? 'pending' : 'details'),
       () => current && setStage('details'),
     )
     return () => { current = false }
-  }, [user])
+  }, [user, attempt])
 
   async function handleSignIn() {
     setBusy(true)
@@ -45,8 +46,8 @@ export default function TeamJoin() {
     setBusy(true)
     setError('')
     try {
-      await joinTeam(user, form)
-      setStage('joined')
+      await requestToJoin(user, form)
+      setStage('pending')
     } catch (err) {
       setError(err.code === 'permission-denied' ? copy.blocked : copy.failed)
     } finally {
@@ -94,10 +95,17 @@ export default function TeamJoin() {
             <p className="mt-3 text-white/70">{copy.blocked}</p>
             {account}
           </>
+        ) : stage === 'pending' ? (
+          <>
+            <h1 className="text-3xl font-bold">{copy.pendingTitle}</h1>
+            <p className="mt-3 text-white/70">{copy.pendingText}</p>
+            <Button variant="secondary" className="mt-8 w-full" onClick={() => setAttempt((n) => n + 1)}>{copy.checkAgain}</Button>
+            {account}
+          </>
         ) : (
           <>
-            <h1 className="text-3xl font-bold">{stage === 'joined' ? copy.doneTitle : copy.title}</h1>
-            <p className="mt-3 text-white/70">{stage === 'joined' ? copy.doneText : copy.already}</p>
+            <h1 className="text-3xl font-bold">{copy.title}</h1>
+            <p className="mt-3 text-white/70">{copy.already}</p>
             <Button to="/team" className="mt-8 w-full">{copy.open}</Button>
             {account}
           </>

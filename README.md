@@ -251,7 +251,7 @@ Defined in `src/App.jsx`.
 | `/team/assignments` | Team assignments: one doc shown whole (people on the team list) | TeamLayout | team portal header |
 | `/team/note` | The note home board with a welcome pop-up over it | none (full screen) | **no** (unlisted) |
 | `/team/note/home`, `/team/note/:boardId` | A note board. Team members edit; anyone with the link can view a board that has been shared | none (full screen) | team portal header ("Note") |
-| `/team/join` | Team sign-up: anyone can join with Google | none (full screen) | **no** (share the address); offered on `/team` to someone not on the list |
+| `/team/join` | Team sign-up: anyone can ask to join with Google; Sam approves | none (full screen) | **no** (share the address); offered on `/team` to someone not on the list |
 | `/team/crew` | Crew Login: Google sign-in for people on the crew list | none (full screen) | **no** (share the address with the crew) |
 | `/team/note/welcome` | The crew welcome (fades in line by line), then on to the boards | none (full screen) | reached from `/team/crew` |
 | `/team/chat` | Team messaging (people on the team list) | TeamLayout | team portal header |
@@ -492,14 +492,13 @@ Create a page in `src/pages/admin/`, lazy-import it in `App.jsx`, and add a `<Ro
 
 ## Team sign-up
 
-`/team/join` lets anyone add themselves to the team, so Sam doesn't have to enter each person by hand.
+`/team/join` lets anyone ask to join the team; Sam approves or declines each request.
 
-- **The flow (`src/pages/TeamJoin.jsx`):** sign in with Google, confirm a name (filled in from the Google account) and optionally what you do, press Join. They are on the team at once, with the same access as anyone Sam adds: the portal, messages, assignments, and editing the note boards.
-- **In the admin (`/admin/team`):** people who signed themselves up appear in Members marked **Signed up**. **Remove** on one of them asks "Remove and block them?": it takes away their access and puts their email on a **Blocked** list, so they can't simply sign up again. **Unblock** lets them back. People Sam added himself are removed as before, without blocking.
+- **The flow (`src/pages/TeamJoin.jsx`):** sign in with Google, confirm a name (filled in from the Google account) and optionally what you do, press *Ask to join*. They then see a **thank-you** and nothing else: no portal, messages, assignments or boards. Coming back shows the same thank-you until they've been approved.
+- **In the admin (`/admin/team`):** requests appear at the top under **Waiting for approval**, with **Approve** and **Decline**. Approving makes them a team member (shown in Members with a "Signed up" tag) with the same access as anyone Sam adds by hand. Declining puts their email on a **Blocked** list so they can't simply ask again; **Unblock** lets them. An approved member can be removed later like any other.
 - **Someone not on the list who opens `/team`** is offered a link to the sign-up page.
-- **Stored** in `teamMembers/{email}` like every member, with `signedUp: true`; blocked emails are in `teamBlocked/{email}` (`src/lib/team.js`: `joinTeam`, `isBlocked`, `blockMember`, `listBlocked`, `unblockMember`).
-- **Security (`firestore.rules`):** a signed-in person with a verified email can create **only their own** entry, once, with just a name, a role and the `signedUp` mark; they can't change it afterwards, mark themselves as the owner, add or remove anyone else, or sign up while blocked. Only Sam can block, unblock or see the blocked list. **Deploy the rules** or sign-up will fail.
-- **What this means:** the team area is now open to anyone who finds `/team/join`, until Sam removes them. The page isn't linked from the public site. To go back to invitation-only, remove the `allow create` rule for `teamMembers`.
+- **Stored:** a request is `teamRequests/{email}` `{ email, name, role, at }`; approving writes `teamMembers/{email}` (with `signedUp: true`) and deletes the request; declined emails are in `teamBlocked/{email}` (`src/lib/team.js`: `requestToJoin`, `getRequest`, `listRequests`, `approveRequest`, `declineRequest`, `listBlocked`, `unblockMember`).
+- **Security (`firestore.rules`):** a signed-in person with a verified email can create **only their own request**, once, with just a name and a role, and can read only their own. A request gives no access to anything. Nobody but Sam can add a team member, see the requests, or block and unblock. **Deploy the rules** or sign-up will fail.
 - Copy is under `join` in `src/data/team.js`.
 
 ---
@@ -711,7 +710,7 @@ Sam wants to be able to build an MCP server for the site later (so an AI assista
 
 | Data | Firestore | Lib file | Functions an MCP tool would mirror |
 | --- | --- | --- | --- |
-| Team list, sign-ups, welcome message | `teamMembers/{email}`, `teamBlocked/{email}`, `portal/welcome` | `src/lib/team.js` | `listMembers`, `addMember`, `removeMember`, `joinTeam`, `blockMember`, `unblockMember`, `getWelcome`, `saveWelcome` |
+| Team list, sign-up requests, welcome message | `teamMembers/{email}`, `teamRequests/{email}`, `teamBlocked/{email}`, `portal/welcome` | `src/lib/team.js` | `listMembers`, `addMember`, `removeMember`, `requestToJoin`, `listRequests`, `approveRequest`, `declineRequest`, `unblockMember`, `getWelcome`, `saveWelcome` |
 | Team messages | `chats/{chatId}/messages` | `src/lib/teamChat.js` | `watchChats`, `watchMessages`, `sendMessage` |
 | Assignments doc | `portal/*` | `src/lib/assignments.js` | `getAssignmentsDoc`, `getDocInfo`, `publishDoc` |
 | Crew list | `crew/{email}` | `src/lib/crew.js` | `listCrew`, `addCrewMember`, `removeCrewMember`, `getCrewMember` |

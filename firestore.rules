@@ -33,17 +33,7 @@ service cloud.firestore {
 
     // teamMembers/{email}: one document per person, keyed by their lowercase Google email.
     // Anyone signed in can check their own; team members can see who else is on the team.
-    // Anyone can also sign themselves up at /team/join: they may create their own entry (their
-    // own verified email, a name and a role, marked `signedUp`), once, unless the owner has
-    // blocked that email. They can't change it afterwards or mark themselves as the owner.
     match /teamMembers/{email} {
-      allow create: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email
-        && !exists(/databases/$(database)/documents/teamBlocked/$(email))
-        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'addedAt', 'signedUp'])
-        && request.resource.data.email == email && request.resource.data.signedUp == true
-        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
-        && request.resource.data.role is string && request.resource.data.role.size() <= 80
-        && request.resource.data.addedAt is string && request.resource.data.addedAt.size() <= 40;
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
       allow read: if isTeam();
     }
@@ -54,7 +44,22 @@ service cloud.firestore {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
     }
 
-    // teamBlocked/{email}: emails the owner has removed for good, so they can't sign up again.
+    // teamRequests/{email}: someone asking to join, from /team/join. Anyone signed in with a
+    // verified email can ask once for their own email (a name and a role), unless the owner has
+    // blocked it, and can see their own request. It gives no access to anything: the owner
+    // approves it at /admin/team (which adds them to teamMembers) or declines it.
+    match /teamRequests/{email} {
+      allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
+      allow create: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email
+        && !exists(/databases/$(database)/documents/teamBlocked/$(email))
+        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'at'])
+        && request.resource.data.email == email
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.role is string && request.resource.data.role.size() <= 80
+        && request.resource.data.at is string && request.resource.data.at.size() <= 40;
+    }
+
+    // teamBlocked/{email}: emails the owner has declined, so they can't ask again.
     // Each person can see whether their own is on it; only the owner writes or lists.
     match /teamBlocked/{email} {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;

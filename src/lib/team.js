@@ -1,7 +1,8 @@
 // Firestore storage for the team portal (see firestore.rules):
 // - teamMembers/{email}: who may open /team, keyed by lowercase Google email. Owner writes; each person can read their own.
-// - People can also add themselves at /team/join (`signedUp: true`); the owner removes anyone they
-//   don't approve of at /admin/team, which also puts their email in teamBlocked/{email}.
+// - People can ask to join at /team/join: that makes a teamRequests/{email} entry, which gives no
+//   access. The owner approves it at /admin/team (they become a member, `signedUp: true`) or
+//   declines it (their email goes in teamBlocked/{email} so they can't ask again).
 // - teamMembers also lists the owner (added automatically, `owner: true`) so the team can message them.
 // - portal/welcome: the portal's welcome heading and message. Owner writes; team members read.
 import { getApp } from 'firebase/app'
@@ -12,6 +13,7 @@ import { collection, deleteDoc, doc, getDoc, getDocsFromServer, initializeFirest
 export const db = initializeFirestore(getApp(), { ignoreUndefinedProperties: true })
 const MEMBERS = 'teamMembers'
 const BLOCKED = 'teamBlocked'
+const REQUESTS = 'teamRequests'
 const WELCOME = doc(db, 'portal', 'welcome')
 
 // Firestore retries forever while it can't reach the server, so every call gets a deadline.
@@ -57,11 +59,21 @@ export async function listMembers() {
   return snap.docs.map((d) => d.data()).sort((a, b) => a.email.localeCompare(b.email))
 }
 
-// Signs the signed-in person up to the team (see firestore.rules: their own email only, once).
-export async function joinTeam(user, { name, role }) {
-  const member = { email: memberId(user.email), name: name.trim().slice(0, 80), role: role.trim().slice(0, 80), addedAt: new Date().toISOString(), signedUp: true }
-  await deadline(setDoc(doc(db, MEMBERS, member.email), member))
-  return member
+// Asks to join the team, as the signed-in person (see firestore.rules: their own email, once).
+// It gives no access until the owner approves it.
+export async function requestToJoin(user, { name, role }) {
+  const request = { email: memberId(user.email), name: name.trim().slice(0, 80), role: role.trim().slice(0, 80), at: new Date().toISOString() }
+  await deadline(setDoc(doc(db, REQUESTS, request.email), request))
+  return request
+}
+// The signed-in person's own request, or null.
+export async function getRequest(email) {
+  try {
+    const snap = await deadline(getDoc(doc(db, REQUESTS, memberId(email))))
+    return snap.exists() ? snap.data() : null
+  } catch {
+    return null
+  }
 }
 
 // Whether the owner has blocked this email from signing up.
@@ -74,10 +86,22 @@ export async function isBlocked(email) {
 }
 
 // Owner only from here down.
-// Removes someone and keeps them out: their email can't sign up again until it is unblocked.
-export async function blockMember(email) {
+// Everyone waiting for approval, oldest first.
+export async function listRequests() {
+  const snap = await deadline(getDocsFromServer(collection(db, REQUESTS)))
+  return snap.docs.map((d) => d.data()).sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''))
+}
+// Approves a request: they become a team member. Returns their member entry.
+export async function approveRequest(request) {
+  const member = { email: memberId(request.email), name: request.name ?? '', role: request.role ?? '', addedAt: new Date().toISOString(), signedUp: true }
+  await deadline(setDoc(doc(db, MEMBERS, member.email), member))
+  await deadline(deleteDoc(doc(db, REQUESTS, member.email)))
+  return member
+}
+// Declines a request and blocks that email, so it can't simply ask again.
+export async function declineRequest(email) {
   await deadline(setDoc(doc(db, BLOCKED, memberId(email)), { email: memberId(email), at: new Date().toISOString() }))
-  await deadline(deleteDoc(doc(db, MEMBERS, memberId(email))))
+  await deadline(deleteDoc(doc(db, REQUESTS, memberId(email))))
 }
 export async function listBlocked() {
   const snap = await deadline(getDocsFromServer(collection(db, BLOCKED)))

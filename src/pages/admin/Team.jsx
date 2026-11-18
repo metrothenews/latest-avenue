@@ -4,7 +4,7 @@ import TextField from '../../components/ui/TextField.jsx'
 import Notice from '../../components/ui/Notice.jsx'
 import CrewAdmin from '../../components/admin/CrewAdmin.jsx'
 import AssignmentsAdmin from '../../components/admin/AssignmentsAdmin.jsx'
-import { addMember, blockMember, listBlocked, listMembers, removeMember, saveWelcome, getWelcome, unblockMember } from '../../lib/team.js'
+import { addMember, approveRequest, declineRequest, listBlocked, listMembers, listRequests, removeMember, saveWelcome, getWelcome, unblockMember } from '../../lib/team.js'
 import { isEmail } from '../../lib/validation.js'
 import { shortDate } from '../../lib/drive.js'
 import { team as copy } from '../../data/team.js'
@@ -14,7 +14,8 @@ const emptyMember = { email: '', name: '', role: '' }
 // /admin/team ("Admin" in the header and on the dashboard): who may open the team portal (/team), and the welcome message they see.
 export default function Team() {
   const [members, setMembers] = useState(null) // null while loading
-  const [blocked, setBlocked] = useState([]) // emails removed for good
+  const [blocked, setBlocked] = useState([]) // emails that were declined
+  const [requests, setRequests] = useState([]) // people waiting for approval
   const [loadError, setLoadError] = useState('')
   const [form, setForm] = useState(emptyMember)
   const [emailError, setEmailError] = useState('')
@@ -24,10 +25,11 @@ export default function Team() {
   const [status, setStatus] = useState('')
 
   useEffect(() => {
-    Promise.all([listMembers(), getWelcome(), listBlocked()])
-      .then(([list, saved, out]) => {
+    Promise.all([listMembers(), getWelcome(), listBlocked(), listRequests()])
+      .then(([list, saved, out, waiting]) => {
         setMembers(list)
         setBlocked(out)
+        setRequests(waiting)
         if (saved) setWelcome({ heading: saved.heading ?? '', message: saved.message ?? '' })
       })
       .catch((err) => setLoadError(`Couldn't load the team: ${err.message}`))
@@ -57,20 +59,29 @@ export default function Team() {
     }, "Couldn't add them")
   }
 
-  // Someone who signed themselves up is also blocked, or they could simply sign up again.
-  const remove = (email, signedUp) => act(async () => {
-    if (signedUp) {
-      await blockMember(email)
-      setBlocked((list) => [...list.filter((b) => b.email !== email), { email }].sort((a, b) => a.email.localeCompare(b.email)))
-    } else await removeMember(email)
+  const remove = (email) => act(async () => {
+    await removeMember(email)
     setMembers((list) => list.filter((m) => m.email !== email))
     setConfirmRemove('')
-    setStatus(signedUp ? `${email} has been removed and can't sign up again.` : `${email} can no longer open the team portal.`)
+    setStatus(`${email} can no longer open the team portal.`)
   }, "Couldn't remove them")
+  const approve = (request) => act(async () => {
+    const member = await approveRequest(request)
+    setRequests((list) => list.filter((r) => r.email !== member.email))
+    setMembers((list) => [...list.filter((m) => m.email !== member.email), member].sort((a, b) => a.email.localeCompare(b.email)))
+    setStatus(`${member.name || member.email} is on the team.`)
+  }, "Couldn't approve them")
+  // Declining also blocks that email, or they could simply ask again.
+  const decline = (email) => act(async () => {
+    await declineRequest(email)
+    setRequests((list) => list.filter((r) => r.email !== email))
+    setBlocked((list) => [...list.filter((b) => b.email !== email), { email }].sort((a, b) => a.email.localeCompare(b.email)))
+    setStatus(`${email} was declined and can't ask again.`)
+  }, "Couldn't decline them")
   const unblock = (email) => act(async () => {
     await unblockMember(email)
     setBlocked((list) => list.filter((b) => b.email !== email))
-    setStatus(`${email} can sign up again.`)
+    setStatus(`${email} can ask to join again.`)
   }, "Couldn't unblock them")
 
   const saveMessage = (e) => {
@@ -87,10 +98,31 @@ export default function Team() {
     <div>
       <h1 className="text-4xl font-extrabold tracking-tight">Admin</h1>
       <p className="mt-3 max-w-2xl text-white/60">
-        People listed here can sign in to the team portal at <a href="/team" className="underline">/team</a> with their Google account. You always have access. Anyone can also sign themselves up at <a href="/team/join" className="underline">/team/join</a>: they get access straight away and appear here marked "Signed up", and you can remove anyone you don't approve of.
+        People listed here can sign in to the team portal at <a href="/team" className="underline">/team</a> with their Google account. You always have access. Anyone can also ask to join at <a href="/team/join" className="underline">/team/join</a>: their request waits here, with no access, until you approve it.
       </p>
       {loadError && <Notice>{loadError}</Notice>}
       <Notice>{status}</Notice>
+
+      {requests.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">Waiting for approval <span className="ml-1 rounded-full border border-white/20 px-2 py-0.5 align-middle text-sm font-normal text-white/70">{requests.length}</span></h2>
+          <p className="mt-2 text-sm text-white/60">People who asked to join at /team/join. They can't see anything until you approve them. Declining blocks that email from asking again.</p>
+          <ul className="glass mt-4 divide-y divide-white/10">
+            {requests.map((r) => (
+              <li key={r.email} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-4 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{r.name || r.email}</p>
+                  <p className="break-all text-white/50">{[r.email, r.role, r.at && `asked ${shortDate(r.at)}`].filter(Boolean).join(' · ')}</p>
+                </div>
+                <span className="flex shrink-0 gap-2">
+                  <Button onClick={() => approve(r)} disabled={busy}>Approve</Button>
+                  <Button variant="secondary" onClick={() => decline(r.email)} disabled={busy}>Decline</Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">Members</h2>
@@ -110,8 +142,8 @@ export default function Team() {
                   <span className="text-white/40">You</span>
                 ) : confirmRemove === m.email ? (
                   <span className="text-white/60">
-                    {m.signedUp ? 'Remove and block them?' : 'Remove their access?'}{' '}
-                    <button type="button" className="text-white underline disabled:opacity-50" onClick={() => remove(m.email, m.signedUp)} disabled={busy}>Remove</button>{' · '}
+                    Remove their access?{' '}
+                    <button type="button" className="text-white underline disabled:opacity-50" onClick={() => remove(m.email)} disabled={busy}>Remove</button>{' · '}
                     <button type="button" className="hover:text-white" onClick={() => setConfirmRemove('')}>Cancel</button>
                   </span>
                 ) : (
@@ -125,7 +157,7 @@ export default function Team() {
         {blocked.length > 0 && (
           <>
             <h3 className="mt-8 text-lg font-semibold">Blocked</h3>
-            <p className="mt-1 text-sm text-white/60">Removed after signing up. These emails can't sign up again.</p>
+            <p className="mt-1 text-sm text-white/60">Declined. These emails can't ask to join again.</p>
             <ul className="glass mt-3 divide-y divide-white/10">
               {blocked.map((b) => (
                 <li key={b.email} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3 text-sm">
