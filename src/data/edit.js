@@ -12,7 +12,7 @@ export const editServiceUrl = 'https://desktop-3dmt7vm.tail508d1d.ts.net'
 
 export const edit = {
   tag: 'edit',
-  back: 'Admin',
+  back: 'Project',  // the live view's header link back to the /edit flow
   fullScreen: 'Full screen',
   exitFullScreen: 'Exit full screen',
   keys: 'Keys',

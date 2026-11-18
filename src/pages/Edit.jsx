@@ -10,7 +10,7 @@ import { editConfigured, getEditStatus, openEditStream, sendEditKey } from '../l
 const START_TIMEOUT_MS = 120000
 const RETRY_MS = 2500
 
-// /edit (owner only): the latest avenue video editor, running in the cloud, shown live.
+// /edit/sequencer (owner only; it was /edit until the guided flow took that address): the latest avenue video editor, running in the cloud, shown live.
 // The page asks the gateway for the editor's state (which starts it if it is off), then opens
 // the live view. Mouse, touch and keyboard go to the editor. On a phone, the on-screen keys
 // stand in for the keyboard keys the game view uses.
@@ -118,7 +118,7 @@ export default function Edit() {
           <div className="ml-auto flex items-center gap-2">
             <Button variant={keys ? 'primary' : 'secondary'} className="min-h-11 !px-4 !py-1.5 sm:min-h-0 sm:!px-3" aria-pressed={keys} onClick={() => setKeys((v) => !v)}>{copy.keys}</Button>
             <Button variant="secondary" className="hidden !px-3 !py-1.5 sm:inline-flex" onClick={toggleFull}>{full ? copy.exitFullScreen : copy.fullScreen}</Button>
-            <Link to="/admin" className="inline-flex min-h-11 items-center rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white sm:min-h-0">{copy.back}</Link>
+            <Link to="/edit" className="inline-flex min-h-11 items-center rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white sm:min-h-0">{copy.back}</Link>
           </div>
         </div>
       </header>

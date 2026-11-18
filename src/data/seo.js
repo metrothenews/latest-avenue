@@ -30,6 +30,7 @@ export const seo = {
   '/analytics': { title: `Analytics | ${site.name}`, description },
   '/admin/experience': { title: `Experience admin | ${site.name}`, description },
   '/edit': { title: `Edit | ${site.name}`, description },
+  '/edit/sequencer': { title: `Sequencer | ${site.name}`, description },
   '/admin/team': { title: `Team admin | ${site.name}`, description },
   '/team/join': { title: `Join the team | ${site.name}`, description: `Sign up for the ${site.name} team portal.`, preview: true },
   '/team': { title: `Team portal | ${site.name}`, description },
