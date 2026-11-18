@@ -52,6 +52,7 @@ export default function TakeSheet({ line, clips, onClose, onChoose, onTrim, onGi
             </li>
           ))}
         </ul>
+        <div className="mt-6"><Button variant="secondary" className="min-h-11" onClick={onClose}>{copy.take.done}</Button></div>
       </Modal>
     )
   }

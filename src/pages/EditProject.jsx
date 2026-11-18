@@ -65,7 +65,7 @@ function StepBar({ step, open, onGo }) {
                 aria-label={`${copy.stepOf(n + 1, steps.length)}: ${s.label}`}
                 className="group flex min-h-11 w-full flex-col justify-center gap-1.5 text-left disabled:cursor-not-allowed"
               >
-                <span className={`block h-1.5 w-full rounded-full ${here ? 'bg-blue-300/80' : done || open[s.id] ? 'bg-white/35' : 'bg-white/10'}`} />
+                <span className={`block h-1.5 w-full rounded-full ${here ? 'bg-blue-300/80' : done ? 'bg-white/40' : open[s.id] ? 'bg-white/20' : 'bg-white/10'}`} />
                 <span className={`hidden truncate text-xs sm:block ${here ? 'text-white' : open[s.id] ? 'text-white/60' : 'text-white/30'}`}>{s.label}</span>
               </button>
             </li>
@@ -83,7 +83,7 @@ export default function EditProject() {
   const [editor, setEditor] = useState(editConfigured ? 'starting' : 'notDeployed')
   const [project, setProject] = useState(undefined) // undefined: not loaded yet; null: none
   const [loadError, setLoadError] = useState(null)
-  const [view, setView] = useState(null)            // a step the person opened; null follows the project
+  const [view, setView] = useState(null)            // the step showing; null until the project loads
   const [driveToken, setDriveToken] = useState(getDriveToken)
   const run = useRef(0)
 
@@ -139,6 +139,12 @@ export default function EditProject() {
     expire: () => { clearDriveToken(); setDriveToken(null) },
   }
 
+  // Land on the first unfinished step, then stay on whatever step is showing until the person
+  // moves on (so a step's "done" summary isn't skipped when the editor finishes).
+  useEffect(() => {
+    if (view == null && project !== undefined) setView(nextStep(project))
+  }, [view, project])
+
   const open = reachable(project)
   const step = view && (view === 'start' || open[view]) ? view : nextStep(project)
   const go = (id) => { setView(id); window.scrollTo(0, 0) }
@@ -157,11 +163,11 @@ export default function EditProject() {
     <div className="min-h-dvh bg-ink">
       <header className="glass-bar sticky top-0 z-20 border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-          <Logo />
-          <span className="rounded-full border border-white/15 px-2 py-0.5 text-xs text-white/60">{copy.tag}</span>
+          <span className="shrink-0 whitespace-nowrap"><Logo /></span>
+          <span className="hidden rounded-full border border-white/15 px-2 py-0.5 text-xs text-white/60 sm:inline">{copy.tag}</span>
           <span className={`h-2 w-2 shrink-0 rounded-full ${editor === 'ready' ? 'bg-white' : 'bg-white/30'}`} aria-hidden="true" />
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="secondary" to="/edit/sequencer" className="min-h-11 !px-4 !py-1.5">{copy.sequencer}</Button>
+            <Button variant="secondary" to="/edit/sequencer" className="min-h-11 !px-4 !py-1.5">{copy.sequencerLink}</Button>
             <Link to="/admin" className="inline-flex min-h-11 items-center rounded-full px-3 py-1.5 text-sm text-white/60 hover:text-white">{copy.admin}</Link>
           </div>
         </div>
@@ -187,7 +193,7 @@ export default function EditProject() {
 
         {project !== undefined && (
           <>
-            {step === 'start' && <StartStep {...props} onProject={(p) => { onProject(p); setView(null) }} onCarryOn={() => setView(null)} />}
+            {step === 'start' && <StartStep {...props} onProject={(p) => { onProject(p); setView('footage') }} onCarryOn={() => setView(nextStep(project))} />}
             {step === 'footage' && <FootageStep {...props} onNext={() => go('script')} />}
             {step === 'script' && <ScriptStep {...props} onNext={() => go('assembly')} />}
             {step === 'assembly' && <AssemblyStep {...props} onNext={() => go('editing')} />}

@@ -3,7 +3,7 @@
 
 export const editFlow = {
   tag: 'edit',
-  sequencer: 'Sequencer',
+  sequencerLink: 'Sequencer',
   admin: 'Admin',
   stepOf: (n, total) => `Step ${n} of ${total}`,
 
