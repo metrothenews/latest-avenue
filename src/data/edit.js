@@ -10,6 +10,14 @@
 // Now: Sam's Windows PC through Tailscale Funnel (set up 2026-11-17).
 export const editServiceUrl = 'https://desktop-3dmt7vm.tail508d1d.ts.net'
 
+// Settings for the editor pages.
+// assistantChat: the chat panel for the editing assistant in the sequencer's header
+// (components/edit/ChatPanel.jsx). Off: Sam's plan for the editor has no chat (the language
+// model is only a hidden fallback inside the pipeline). Set to true to bring the panel back.
+export const editSettings = {
+  assistantChat: false,
+}
+
 export const edit = {
   tag: 'edit',
   back: 'Project',  // the live view's header link back to the /edit flow
