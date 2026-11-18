@@ -147,7 +147,7 @@ export default function EditProject() {
     <div className="min-h-dvh bg-ink">
       <header className="glass-bar sticky top-0 z-20 border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-          <span className="shrink-0 whitespace-nowrap"><Logo /></span>
+          <span className="shrink-0 whitespace-nowrap [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center"><Logo /></span>
           <span className="hidden rounded-full border border-white/15 px-2 py-0.5 text-xs text-white/60 sm:inline">{copy.tag}</span>
           <span className={`h-2 w-2 shrink-0 rounded-full ${editor === 'ready' ? 'bg-white' : 'bg-white/30'}`} aria-hidden="true" />
           <div className="ml-auto flex items-center gap-1">

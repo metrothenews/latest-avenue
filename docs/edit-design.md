@@ -106,6 +106,12 @@ The four asks from the first pass (`save_upload`, song and lyrics on `start_asse
   thumbnails → swap take → trim → move and undo → fix sync → lay out → Premiere export. Music
   video, phone and desktop: song from the folder, lyrics uploaded → assembly cut to the beat →
   swap picture → lay out → rendered MP4. 14 tools ran for real: probe_media, save_upload, read_screenplay, start_assembly, job_status, get_editing_script, take_thumbnails, choose_take, set_line_cut, edit_editing_script, set_clip_sync, lay_out_editing_script, export_sequence, render_video.
+- **Phone check, 390px touch (iPhone 13), builder @ff12b07c, 124x70 shoot:** every screen of
+  both paths (start, folder picker, footage, script choices, script read, building, built, review,
+  swap sheet, sync sheet, export choices, export done; music: song, built, review, swap picture,
+  export) has no sideways scroll and no visible control under 44x44 px. To get there: the logo
+  link, one-line text boxes in the review, and the shared pop-up's ✕ (its tap area only; it looks
+  the same) were made 44px tall.
 - **Not real in that run:** Google Drive in and out (`fetch_drive_folder` returned a folder
   already on the editor; `upload_to_drive` was stubbed), the gateway's sign-in check, and the
   live view's stream. The Docker image itself (`cloud/Dockerfile`) wasn't built here: this

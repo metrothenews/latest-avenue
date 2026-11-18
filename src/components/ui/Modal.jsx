@@ -27,7 +27,8 @@ export default function Modal({ open, onClose, title, width = 'max-w-lg', childr
       >
         <div className="flex items-start justify-between gap-4">
           <h2 className="min-w-0 break-words text-2xl font-bold">{title}</h2>
-          <button type="button" aria-label="Close" onClick={onClose} className="text-white/50 hover:text-white">✕</button>
+          {/* 44px tap area around the same small ✕ (negative margin keeps the layout as it was). */}
+          <button type="button" aria-label="Close" onClick={onClose} className="-m-3 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-white/50 hover:text-white">✕</button>
         </div>
         <div className="mt-4">{children}</div>
       </div>

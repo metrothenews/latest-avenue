@@ -38,7 +38,7 @@ function AutoText({ value, onCommit, className, label, disabled }) {
       disabled={disabled}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft.trim() && draft !== value && onCommit(draft.replace(/\s+/g, ' ').trim())}
-      className={`block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-0.5 font-mono text-[15px] leading-relaxed text-white focus:border-white/20 focus:bg-white/[0.04] focus:outline-none ${className}`}
+      className={`block min-h-11 w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-2 font-mono text-[15px] leading-relaxed text-white focus:border-white/20 focus:bg-white/[0.04] focus:outline-none ${className}`}
     />
   )
 }
