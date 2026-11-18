@@ -105,7 +105,7 @@ The four asks from the first pass (`save_upload`, song and lyrics on `start_asse
   uploaded from the device → assembly (real transcription and matching) → review with real
   thumbnails → swap take → trim → move and undo → fix sync → lay out → Premiere export. Music
   video, phone and desktop: song from the folder, lyrics uploaded → assembly cut to the beat →
-  swap picture → lay out → rendered MP4. 18 of the tools exercised for real.
+  swap picture → lay out → rendered MP4. 14 tools ran for real: probe_media, save_upload, read_screenplay, start_assembly, job_status, get_editing_script, take_thumbnails, choose_take, set_line_cut, edit_editing_script, set_clip_sync, lay_out_editing_script, export_sequence, render_video.
 - **Not real in that run:** Google Drive in and out (`fetch_drive_folder` returned a folder
   already on the editor; `upload_to_drive` was stubbed), the gateway's sign-in check, and the
   live view's stream. The Docker image itself (`cloud/Dockerfile`) wasn't built here: this
