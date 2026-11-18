@@ -1,5 +1,7 @@
 // Firestore storage for the team portal (see firestore.rules):
 // - teamMembers/{email}: who may open /team, keyed by lowercase Google email. Owner writes; each person can read their own.
+// - People can also add themselves at /team/join (`signedUp: true`); the owner removes anyone they
+//   don't approve of at /admin/team, which also puts their email in teamBlocked/{email}.
 // - teamMembers also lists the owner (added automatically, `owner: true`) so the team can message them.
 // - portal/welcome: the portal's welcome heading and message. Owner writes; team members read.
 import { getApp } from 'firebase/app'
@@ -9,6 +11,7 @@ import { collection, deleteDoc, doc, getDoc, getDocsFromServer, initializeFirest
 // instance whichever file loads first (different settings would throw).
 export const db = initializeFirestore(getApp(), { ignoreUndefinedProperties: true })
 const MEMBERS = 'teamMembers'
+const BLOCKED = 'teamBlocked'
 const WELCOME = doc(db, 'portal', 'welcome')
 
 // Firestore retries forever while it can't reach the server, so every call gets a deadline.
@@ -54,7 +57,34 @@ export async function listMembers() {
   return snap.docs.map((d) => d.data()).sort((a, b) => a.email.localeCompare(b.email))
 }
 
+// Signs the signed-in person up to the team (see firestore.rules: their own email only, once).
+export async function joinTeam(user, { name, role }) {
+  const member = { email: memberId(user.email), name: name.trim().slice(0, 80), role: role.trim().slice(0, 80), addedAt: new Date().toISOString(), signedUp: true }
+  await deadline(setDoc(doc(db, MEMBERS, member.email), member))
+  return member
+}
+
+// Whether the owner has blocked this email from signing up.
+export async function isBlocked(email) {
+  try {
+    return (await deadline(getDoc(doc(db, BLOCKED, memberId(email))))).exists()
+  } catch {
+    return false
+  }
+}
+
 // Owner only from here down.
+// Removes someone and keeps them out: their email can't sign up again until it is unblocked.
+export async function blockMember(email) {
+  await deadline(setDoc(doc(db, BLOCKED, memberId(email)), { email: memberId(email), at: new Date().toISOString() }))
+  await deadline(deleteDoc(doc(db, MEMBERS, memberId(email))))
+}
+export async function listBlocked() {
+  const snap = await deadline(getDocsFromServer(collection(db, BLOCKED)))
+  return snap.docs.map((d) => d.data()).sort((a, b) => a.email.localeCompare(b.email))
+}
+export const unblockMember = (email) => deadline(deleteDoc(doc(db, BLOCKED, memberId(email))))
+
 export async function addMember({ email, name, role }) {
   const member = { email: memberId(email), name: name.trim(), role: role.trim(), addedAt: new Date().toISOString() }
   await deadline(setDoc(doc(db, MEMBERS, member.email), member))

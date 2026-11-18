@@ -33,7 +33,17 @@ service cloud.firestore {
 
     // teamMembers/{email}: one document per person, keyed by their lowercase Google email.
     // Anyone signed in can check their own; team members can see who else is on the team.
+    // Anyone can also sign themselves up at /team/join: they may create their own entry (their
+    // own verified email, a name and a role, marked `signedUp`), once, unless the owner has
+    // blocked that email. They can't change it afterwards or mark themselves as the owner.
     match /teamMembers/{email} {
+      allow create: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email
+        && !exists(/databases/$(database)/documents/teamBlocked/$(email))
+        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'addedAt', 'signedUp'])
+        && request.resource.data.email == email && request.resource.data.signedUp == true
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80
+        && request.resource.data.role is string && request.resource.data.role.size() <= 80
+        && request.resource.data.addedAt is string && request.resource.data.addedAt.size() <= 40;
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
       allow read: if isTeam();
     }
@@ -41,6 +51,12 @@ service cloud.firestore {
     // crew/{email}: one person on a project, keyed by their lowercase Google email. They can read
     // their own entry (it holds their phone number, so nobody else's); only the owner writes or lists.
     match /crew/{email} {
+      allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
+    }
+
+    // teamBlocked/{email}: emails the owner has removed for good, so they can't sign up again.
+    // Each person can see whether their own is on it; only the owner writes or lists.
+    match /teamBlocked/{email} {
       allow get: if request.auth != null && request.auth.token.email_verified == true && myEmail() == email;
     }
 

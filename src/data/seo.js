@@ -29,6 +29,7 @@ export const seo = {
   '/admin/campaigns': { title: `New Meta campaign | ${site.name}`, description },
   '/analytics': { title: `Analytics | ${site.name}`, description },
   '/admin/team': { title: `Team admin | ${site.name}`, description },
+  '/team/join': { title: `Join the team | ${site.name}`, description: `Sign up for the ${site.name} team portal.`, preview: true },
   '/team': { title: `Team portal | ${site.name}`, description },
   '/team/assignments': { title: `Assignments | ${site.name}`, description },
   // Also written into the built page for this address, so link previews show it (see vite.config.js).

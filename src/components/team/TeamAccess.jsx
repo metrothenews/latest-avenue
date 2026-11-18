@@ -64,7 +64,10 @@ export default function TeamAccess() {
       <div className="glass mx-auto mt-8 max-w-md space-y-4 p-8 text-white/70">
         <h1 className="text-3xl font-bold text-white">{copy.signInTitle}</h1>
         {access.state === 'denied' ? (
-          <p>Signed in as <span className="text-white">{user.email}</span>, {copy.notOnTeam}</p>
+          <>
+            <p>Signed in as <span className="text-white">{user.email}</span>, {copy.notOnTeam}</p>
+            <p>{copy.join.offer} <a href="/team/join" className="text-white underline">{copy.join.offerLink}</a></p>
+          </>
         ) : (
           <p>{copy.checkFailed}</p>
         )}

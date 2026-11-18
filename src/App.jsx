@@ -24,6 +24,7 @@ const TeamLayout = lazy(() => import('./components/layout/TeamLayout.jsx'))
 const TeamAccess = lazy(() => import('./components/team/TeamAccess.jsx'))
 const Team = lazy(() => import('./pages/Team.jsx'))
 const TeamMessages = lazy(() => import('./pages/TeamMessages.jsx'))
+const TeamJoin = lazy(() => import('./pages/TeamJoin.jsx'))
 const CrewLogin = lazy(() => import('./pages/CrewLogin.jsx'))
 const CrewWelcome = lazy(() => import('./pages/CrewWelcome.jsx'))
 const NoteBoard = lazy(() => import('./pages/note/NoteBoard.jsx'))
@@ -76,6 +77,8 @@ export default function App() {
             {/* Team portal: Google sign-in, open to emails listed at /admin/team (checked in TeamAccess). */}
             {/* latest avenue note: boards the team edits; shared boards are readable by anyone with the link. */}
             {/* Crew: sign-in for people listed under Crew at /admin/team, then their welcome, then the boards (read-only). */}
+            {/* Team sign-up: anyone can join with Google; the owner can remove them at /admin/team. */}
+            <Route path="/team/join" element={<TeamJoin />} />
             <Route path="/team/crew" element={<CrewLogin />} />
             <Route path="/team/note/welcome" element={<CrewWelcome />} />
             <Route path="/team/note" element={<NoteBoard />} />
