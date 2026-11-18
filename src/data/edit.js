@@ -7,7 +7,8 @@
 // server (printed by `cloud/pc/install.ps1` there). It must start with https://.
 // It isn't secret: nothing there answers without the owner's sign-in.
 // Empty until one of them has been set up; the page says so.
-export const editServiceUrl = ''
+// Now: Sam's Windows PC through Tailscale Funnel (set up 2026-11-17).
+export const editServiceUrl = 'https://desktop-3dmt7vm.tail508d1d.ts.net'
 
 export const edit = {
   tag: 'edit',
